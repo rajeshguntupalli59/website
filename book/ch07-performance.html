@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 7: Performance Optimization — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 7: Performance Optimization. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 7 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 7: Performance Optimization</h2>
+
+<p class="text-gray-300 leading-relaxed">Performance optimization is one of the most demanding and intellectually rewarding responsibilities a DBA carries. It requires equal parts measurement, diagnosis, and surgical intervention — and doing it wrong can make things significantly worse. This chapter walks through how databases execute queries, how to read the signals that tell you something is wrong, and what tools and techniques you can apply to fix real production problems. The concepts here apply to both PostgreSQL and SQL Server, though the mechanics differ meaningfully between them, and those differences matter when you are under pressure to solve a problem fast.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Understanding How Query Execution Works</h3>
+
+<p class="text-gray-300 leading-relaxed">Before you can optimize anything, you need a mental model of what happens when a database receives a query. The path from SQL text to result set is not a straight line — it passes through a parser, a query planner (or optimizer), and an execution engine, and decisions made at each stage directly affect how long the query runs.</p>
+
+<p class="text-gray-300 leading-relaxed">When you submit a query, the database first parses the SQL into an internal representation, then hands it to the query optimizer. The optimizer's job is to evaluate multiple execution strategies — called query plans — and choose the one it believes will be cheapest. "Cheapest" in this context means the plan with the lowest estimated cost, measured in units that represent disk I/O, CPU cycles, and memory consumption. The optimizer is not psychic; it makes decisions based on statistics it has collected about your data, including the number of rows in a table, the distribution of values in columns, and the presence or absence of indexes. When those statistics are stale or missing, the optimizer makes poor decisions, and you end up with slow queries that have no obvious cause.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL uses a cost-based optimizer that considers sequential scans, index scans, bitmap index scans, hash joins, merge joins, nested loops, and more. It uses statistics stored in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_statistic</code> and exposed through <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stats</code>. SQL Server's optimizer is also cost-based and relies on statistics objects stored in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.stats</code>, with column-level density and histograms that guide join strategies and seek-versus-scan decisions.</p>
+
+<p class="text-gray-300 leading-relaxed">Understanding this pipeline means you know where to look when something goes wrong. A bad plan is almost always caused by bad statistics, a missing index, a poorly written query, or some combination of all three. The fix starts with reading the plan.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Reading and Interpreting Execution Plans</h3>
+
+<p class="text-gray-300 leading-relaxed">An execution plan is the database's written explanation of how it intends to run your query. Learning to read plans fluently is the single most valuable skill in query optimization. Everything else — indexes, rewrites, hints — is downstream of understanding what the database is actually doing.</p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, you generate a plan using <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">EXPLAIN</code> for the estimated plan or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">EXPLAIN ANALYZE</code> for the actual execution with runtime statistics. <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">EXPLAIN ANALYZE</code> runs the query, so avoid it on expensive writes unless you wrap them in a transaction you can roll back.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- See the full execution plan with actual timing and row counts
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+SELECT
+    o.order_id,
+    o.order_date,
+    c.customer_name,
+    SUM(oi.unit_price * oi.quantity) AS order_total
+FROM orders o
+JOIN customers c ON c.customer_id = o.customer_id
+JOIN order_items oi ON oi.order_id = o.order_id
+WHERE o.order_date &gt;= '2024-01-01'
+GROUP BY o.order_id, o.order_date, c.customer_name
+ORDER BY order_total DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- See the actual execution plan with I/O and time statistics
+SET STATISTICS IO ON;
+SET STATISTICS TIME ON;
+
+SELECT
+    o.order_id,
+    o.order_date,
+    c.customer_name,
+    SUM(oi.unit_price * oi.quantity) AS order_total
+FROM orders o
+JOIN customers c ON c.customer_id = o.customer_id
+JOIN order_items oi ON oi.order_id = o.order_id
+WHERE o.order_date &gt;= '2024-01-01'
+GROUP BY o.order_id, o.order_date, c.customer_name
+ORDER BY order_total DESC;
+
+-- Or use the graphical plan in SSMS with:
+-- SET STATISTICS PROFILE ON;
+-- Or press Ctrl+M for actual execution plan</code></pre>
+
+<p class="text-gray-300 leading-relaxed">When reading a PostgreSQL <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">EXPLAIN ANALYZE</code> output, the most important things to look for are the difference between estimated rows and actual rows, the nodes where most time is spent, and whether the planner chose an appropriate join type. A node showing <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">rows=1</code> estimated but <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">rows=847523</code> actual is a red flag — the optimizer is flying blind, and that typically means statistics need updating or a histogram bucket is too coarse for your data distribution.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, the graphical execution plan in SSMS communicates the same information visually. Thick arrows between operators indicate large row counts. Operator costs are shown as percentages of the total query cost. The most expensive operator is almost always where your optimization effort should begin. SQL Server also provides warnings directly in the plan — a yellow exclamation triangle on an operator means something is wrong, often a missing index, an implicit data type conversion, or a memory grant problem.</p>
+
+<p class="text-gray-300 leading-relaxed">The key metrics to track in any plan are: the scan/seek ratio on large tables, whether hash joins are spilling to disk (indicated by "Hash Batches > 1" in PostgreSQL and a yellow warning icon in SQL Server), whether sorts are hitting memory limits, and whether any table is being scanned when an index seek was expected.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Statistics, Cardinality, and Why Estimates Go Wrong</h3>
+
+<p class="text-gray-300 leading-relaxed">The optimizer's ability to produce good plans depends entirely on the accuracy of its statistics. Statistics describe your data — how many rows a table has, how many distinct values exist in a column, what the value distribution looks like. When statistics lie, the optimizer produces plans that are technically valid but practically disastrous.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL maintains statistics through <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ANALYZE</code>, which samples tables and updates the histograms and most-common-value lists stored in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_statistic</code>. The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">autovacuum</code> daemon runs <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ANALYZE</code> automatically based on configurable thresholds, but in high-write environments, statistics can lag significantly behind reality. For a table with tens of millions of rows being inserted into at high volume, autovacuum's default trigger (20% of rows changed) may not fire often enough.</p>
+
+<p class="text-gray-300 leading-relaxed">You can increase the statistics target for specific columns when the default resolution of 100 histogram buckets is not enough to capture the actual distribution. For columns used heavily in WHERE clauses or JOIN conditions with skewed data, bumping the statistics target to 500 or even 1000 gives the optimizer more detail to work with.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check current statistics and see where estimates diverged recently
+SELECT
+    schemaname,
+    tablename,
+    attname,
+    n_distinct,
+    correlation
+FROM pg_stats
+WHERE tablename = 'orders'
+ORDER BY attname;
+
+-- Increase statistics resolution for a skewed column
+ALTER TABLE orders
+    ALTER COLUMN order_status SET STATISTICS 500;
+
+-- Force a manual analyze on the table
+ANALYZE VERBOSE orders;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check statistics health and when they were last updated
+SELECT
+    s.name AS stats_name,
+    OBJECT_NAME(s.object_id) AS table_name,
+    sp.last_updated,
+    sp.rows,
+    sp.rows_sampled,
+    sp.modification_counter
+FROM sys.stats s
+CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
+WHERE OBJECT_NAME(s.object_id) = 'orders'
+ORDER BY sp.last_updated DESC;
+
+-- Manually update statistics with full scan for a critical table
+UPDATE STATISTICS orders WITH FULLSCAN;
+
+-- Or update all statistics in the database
+EXEC sp_updatestats;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">SQL Server has a concept called statistics auto-update, which triggers when approximately 20% of rows in a table have changed (or a lower threshold for larger tables introduced in trace flag 2371 and made default in SQL Server 2016+). Even with auto-update enabled, there is a threshold effect: statistics are not updated continuously, so for very active tables, the statistics in memory may describe data that no longer reflects what is on disk.</p>
+
+<p class="text-gray-300 leading-relaxed">One of the most insidious cardinality problems in both databases is parameter sniffing. When a stored procedure or parameterized query is first executed, the database compiles a plan based on the specific parameter values used at that moment. That plan is cached. If subsequent executions use very different parameter values — say, the first call queries a customer with 10 orders and the cached plan is then used for a customer with 450,000 orders — the cached plan may be catastrophically wrong for the new inputs. In PostgreSQL, this manifests in PL/pgSQL functions where the plan is cached after first execution. In SQL Server, it is an extremely common production issue with stored procedures. The solutions involve query plan recompilation, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">OPTION (RECOMPILE)</code> hints in SQL Server, or restructuring the query to avoid plan sensitivity.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Identifying and Resolving Bottlenecks with System Views</h3>
+
+<p class="text-gray-300 leading-relaxed">Reading individual query plans is essential for targeted optimization, but finding which queries *need* optimization in the first place requires a different approach. Both PostgreSQL and SQL Server expose rich system views and dynamic management views that let you identify the worst offenders across the entire workload without having to examine every query one by one.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_statements</code> extension is the starting point for workload analysis. Once enabled, it tracks query execution across all connections, aggregating statistics by normalized query text. You can sort by total time, mean time, or I/O reads to find exactly where your database is spending its time.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Find the top 10 slowest queries by total execution time
+SELECT
+    query,
+    calls,
+    total_exec_time / 1000 AS total_seconds,
+    mean_exec_time / 1000 AS mean_seconds,
+    stddev_exec_time / 1000 AS stddev_seconds,
+    rows,
+    shared_blks_hit,
+    shared_blks_read,
+    shared_blks_read::float /
+        NULLIF(shared_blks_hit + shared_blks_read, 0) AS miss_ratio
+FROM pg_stat_statements
+ORDER BY total_exec_time DESC
+LIMIT 10;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Find the top 10 most expensive queries by total CPU time
+SELECT TOP 10
+    qs.total_worker_time / qs.execution_count AS avg_cpu_us,
+    qs.total_worker_time AS total_cpu_us,
+    qs.execution_count,
+    qs.total_logical_reads / qs.execution_count AS avg_logical_reads,
+    qs.total_elapsed_time / qs.execution_count AS avg_elapsed_us,
+    SUBSTRING(qt.text, (qs.statement_start_offset / 2) + 1,
+        ((CASE qs.statement_end_offset
+            WHEN -1 THEN DATALENGTH(qt.text)
+            ELSE qs.statement_end_offset
+        END - qs.statement_start_offset) / 2) + 1) AS query_text,
+    qp.query_plan
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) qt
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+ORDER BY qs.total_worker_time DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_query_stats</code> gives you cached plan statistics, while <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_requests</code> shows what is actively running right now. The combination tells a complete story: historical performance plus real-time activity. For blocking analysis — a major source of performance degradation in OLTP systems — <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_requests</code> joined with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_os_waiting_tasks</code> will show you exactly which sessions are blocked and what they are waiting on.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL surfaces active query information through <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_activity</code>. For lock contention analysis, joining <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_activity</code> with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_locks</code> reveals which backends are holding locks that others are waiting for. This is the PostgreSQL equivalent of SQL Server's blocking chain analysis, and in high-concurrency environments, unresolved lock chains can cascade into full-scale connection exhaustion.</p>
+
+<p class="text-gray-300 leading-relaxed">Beyond queries, both databases provide object-level statistics. PostgreSQL's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_user_tables</code> shows heap fetches, sequential scans, index scans, live and dead tuples, and when the table was last vacuumed and analyzed. A table with a very high ratio of sequential scans to index scans on a large dataset usually indicates a missing or underutilized index. SQL Server's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_db_index_usage_stats</code> provides similar insight — how many seeks, scans, and lookups an index has served, and how many rows have been inserted, updated, or deleted through it. An index that has zero seeks and thousands of updates is costing you write overhead without providing read benefit, and it is a candidate for removal.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Rewriting Queries and Schema-Level Optimizations</h3>
+
+<p class="text-gray-300 leading-relaxed">Once you have identified the slow queries and read their plans, the actual work of optimization begins. Some problems are solved by adding an index. Others require rewriting the query. Some require both, and a few require rethinking the schema itself.</p>
+
+<p class="text-gray-300 leading-relaxed">A common anti-pattern in production systems is the function-wrapped column in a WHERE clause. When you apply a function to a column on the left side of a filter condition, you disable the ability to use a standard B-tree index on that column. The database must evaluate the function for every row and cannot use the index to seek directly to matching values. The fix is to rewrite the filter so the column is bare on one side, or to create a functional index (PostgreSQL) or a computed column with an index (SQL Server) that pre-computes the expression.</p>
+
+<p class="text-gray-300 leading-relaxed">Similarly, implicit type conversions break index seeks in SQL Server. If a column is defined as <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VARCHAR</code> but you filter it with an integer literal, SQL Server must convert every value in the column to compare it against your parameter — making the index useless. PostgreSQL handles some implicit conversions more gracefully, but the general principle holds: matching data types between columns and their filter values is not just good practice, it is a prerequisite for efficient execution.</p>
+
+<p class="text-gray-300 leading-relaxed">Another common source of unnecessary work is the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SELECT *</code> pattern in production queries. Retrieving all columns forces the database to read every data page containing those columns, even when only two or three columns are actually needed. For wide tables with columns containing large text, JSON blobs, or binary data, this can multiply I/O by an order of magnitude. Selecting only the columns you need also enables covering index strategies, where the index itself contains all the data the query requires and no table access is needed at all.</p>
+
+<p class="text-gray-300 leading-relaxed">CTEs present a subtle optimization trap in PostgreSQL. Prior to PostgreSQL 12, all CTEs were optimization fences — the planner would materialize the CTE result into a temporary structure and prevent itself from pushing filter predicates down into the CTE. This meant that even if your outer query filtered heavily, the CTE would process all its rows first. Since PostgreSQL 12, the planner inlines CTEs by default when they are referenced only once and not recursive, but older codebases running on earlier versions still carry this problem. In SQL Server, CTEs are never materialized by default; they are expanded inline before optimization, so they do not carry this risk.</p>
+
+<p class="text-gray-300 leading-relaxed">Window functions are a frequent target for rewriting. A query that uses a window function to compute a running total or a rank, and then wraps it in a subquery to filter on the computed result, forces the database to compute the window function across all qualifying rows before applying the outer filter. In some cases, restructuring the query to push filters inside the window's PARTITION or to use a different aggregation strategy can dramatically reduce the working set.</p>
+
+<p class="text-gray-300 leading-relaxed">For schema-level optimizations, partitioning is one of the most powerful tools available. A <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sales</code> table with five years of data and 800 million rows can be partitioned by year or quarter, enabling the optimizer to skip entire partitions when the query filters on the partition key. Both PostgreSQL (declarative partitioning since version 10) and SQL Server (partition functions and schemes) support this pattern. The key insight is that partition pruning only works when the filter condition is on the partition key column and the value is known at planning time — a filter like <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">WHERE year_col = EXTRACT(YEAR FROM NOW())</code> may not prune correctly if the planner cannot resolve the expression statically.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Create a partitioned table for sales data by year
+CREATE TABLE sales (
+    sale_id     BIGSERIAL,
+    sale_date   DATE NOT NULL,
+    customer_id INT NOT NULL,
+    amount      NUMERIC(12,2),
+    region      TEXT
+) PARTITION BY RANGE (sale_date);
+
+CREATE TABLE sales_2023
+    PARTITION OF sales
+    FOR VALUES FROM ('2023-01-01') TO ('2024-01-01');
+
+CREATE TABLE sales_2024
+    PARTITION OF sales
+    FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
+
+-- Verify partition pruning is happening
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT SUM(amount)
+FROM sales
+WHERE sale_date BETWEEN '2024-01-01' AND '2024-03-31';</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Create a partition function and scheme for sales data
+CREATE PARTITION FUNCTION pf_sales_by_year (DATE)
+AS RANGE RIGHT
+FOR VALUES ('2023-01-01', '2024-01-01', '2025-01-01');
+
+CREATE PARTITION SCHEME ps_sales_by_year
+AS PARTITION pf_sales_by_year
+ALL TO ([PRIMARY]);
+
+-- Create the partitioned table
+CREATE TABLE sales (
+    sale_id     BIGINT IDENTITY(1,1),
+    sale_date   DATE NOT NULL,
+    customer_id INT NOT NULL,
+    amount      NUMERIC(12,2),
+    region      NVARCHAR(100)
+) ON ps_sales_by_year(sale_date);
+
+-- Check which partition a query will use
+SELECT $PARTITION.pf_sales_by_year('2024-02-15') AS partition_number;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Tuning Memory, Parallelism, and Configuration</h3>
+
+<p class="text-gray-300 leading-relaxed">Query-level optimization addresses specific slow queries, but system-level configuration determines the performance ceiling for everything running on the instance. Two areas that DBAs most frequently under-tune are memory allocation and parallel query execution.</p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">work_mem</code> controls how much memory each sort or hash operation can use before spilling to disk. The default is 4MB, which is deliberately conservative because the value applies per operation per connection — a complex query with multiple sort nodes, run by 100 concurrent connections, could consume <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">work_mem * sort_nodes * 100</code> memory simultaneously. In practice, a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">work_mem</code> of 4MB forces many sorts and hash joins on large datasets to spill to disk, causing dramatic slowdowns. The right approach is to leave the global <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">work_mem</code> at a safe value for OLTP workloads and use <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SET work_mem = '256MB'</code> at the session level for known analytical queries or batch jobs that need it. Similarly, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">shared_buffers</code> should be set to roughly 25% of total RAM for a dedicated PostgreSQL server, with the operating system page cache handling the rest. The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">effective_cache_size</code> parameter does not allocate memory — it tells the planner how much memory it can assume is available for caching, affecting whether the planner prefers index scans over sequential scans.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, the equivalent lever is <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max server memory</code>, which caps the total memory the SQL Server buffer pool can use. Leaving this at the default (unlimited) on a server with other services running is a production risk — SQL Server will consume available RAM until the OS begins paging, at which point performance collapses. Set <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max server memory</code> explicitly, leaving 10-15% of RAM for the OS and other processes. SQL Server also exposes <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">min memory per query</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max degree of parallelism</code> (MAXDOP), both of which affect how parallel queries execute.</p>
+
+<p class="text-gray-300 leading-relaxed">Parallel query execution is a double-edged tool. Both databases can split a single query across multiple CPU cores, which speeds up large analytical queries but can harm OLTP throughput when too many parallel workers compete for CPU. In PostgreSQL, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max_parallel_workers_per_gather</code> controls how many workers a single query node can use, and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">parallel_tuple_cost</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">parallel_setup_cost</code> influence when the planner decides parallelism is worth the overhead. For OLTP workloads with many small, fast queries, parallelism often adds more latency than it removes — the setup cost of spawning workers exceeds the benefit on a query that runs in 2ms. For analytical workloads doing full-table aggregations, parallelism is frequently the difference between a 45-second query and a 6-second one.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, MAXDOP at the server level is a ceiling, but you can also set it at the database level (since SQL Server 2019) and per-query using the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">OPTION (MAXDOP N)</code> hint. In production environments with mixed OLTP and analytical workloads, a Resource Governor configuration (SQL Server) or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_query_settings</code> combined with connection pooler routing (PostgreSQL) allows different query classes to receive different resource allocations, preventing a single expensive report from consuming resources that OLTP transactions need.</p>
+
+<p class="text-gray-300 leading-relaxed">Index maintenance also falls into this operational tuning category. Indexes fragment over time as pages split from inserts and updates. In SQL Server, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_db_index_physical_stats</code> reports average fragmentation, and the standard recommendation is to rebuild indexes above 30% fragmentation and reorganize those between 10% and 30%. In PostgreSQL, fragmentation manifests as dead tuple bloat rather than page-level fragmentation, and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VACUUM</code> is the tool that reclaims dead tuple space. Unlike SQL Server's index rebuild, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VACUUM</code> does not reorder data pages, which means that for very bloated tables, a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VACUUM FULL</code> (which rewrites the entire table) or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_repack</code> (a third-party extension that rewrites online) may be needed — but both approaches require careful planning because <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VACUUM FULL</code> takes an exclusive lock while <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_repack</code> does not.</p>
+
+<p class="text-gray-300 leading-relaxed">The operational discipline around these settings separates databases that perform consistently over months and years from ones that degrade steadily. Fragmented indexes, stale statistics, and misconfigured memory do not cause acute failures — they cause slow, invisible degradation that accumulates until a query that used to run in 300ms is now taking 12 seconds, and nobody changed anything.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Key Takeaways</h3>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Execution plans are your primary diagnostic tool.** `EXPLAIN ANALYZE` in PostgreSQL and actual execution plans in SQL Server tell you exactly where time and I/O are going — no other signal is more reliable for query-level diagnosis.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Statistics accuracy determines plan quality.** Most optimizer failures trace back to stale, low-resolution, or missing statistics. Regularly update statistics on high-write tables and increase the statistics target for skewed columns used in filters and joins.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **System views give you the workload picture.** `pg_stat_statements` and `sys.dm_exec_query_stats` let you identify the highest-impact queries across the entire instance, so you optimize what actually matters rather than what is easiest to find.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Schema and query structure set the floor on performance.** No amount of index tuning fully compensates for a fundamentally inefficient query structure — function-wrapped columns, implicit type conversions, and unnecessary `SELECT *` are problems that require rewrites, not indexes.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Memory and parallelism settings have workload-specific optimal values.** `work_mem`, `shared_buffers`, `max server memory`, and MAXDOP are not set-and-forget parameters. They require tuning based on your actual query mix, and the right values for an OLTP system are meaningfully different from those for an analytical warehouse running on the same hardware.</li>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
