@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 5: Storage Models — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 5: Storage Models. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 5 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 5: Storage Models</h2>
+
+<p class="text-gray-300 leading-relaxed">How a database stores data on disk is not just a mechanical detail — it is one of the most consequential architectural decisions shaping query performance, write throughput, compression ratios, and maintenance overhead. PostgreSQL and SQL Server each take distinct approaches to organizing data on storage, and understanding those approaches at a fundamental level separates DBAs who tune by intuition from those who tune by understanding. This chapter covers how rows and pages are structured, how heap files and clustered indexes differ as storage strategies, how columnar storage changes the game for analytical workloads, and how both databases manage free space and page layout internally. By the time you finish this chapter, you will be able to look at a slow query or a bloated table and reason from first principles about what the storage layer is doing.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Pages, Blocks, and the Unit of I/O</h3>
+
+<p class="text-gray-300 leading-relaxed">Every database operation — whether it reads one row or one million — ultimately works in units of pages. Understanding the page is the starting point for everything else in this chapter.</p>
+
+<p class="text-gray-300 leading-relaxed">In both PostgreSQL and SQL Server, data is not read byte-by-byte from disk. The database engine reads and writes entire fixed-size blocks, and these blocks are what live in the shared buffer pool (PostgreSQL) or the buffer cache (SQL Server). Any time you read a single row, the engine loads the entire page that contains that row into memory. This is why page size, row size, and row density matter so much.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL</strong> uses a default page size of 8 KB, configurable at compile time (16 KB and 32 KB are common alternatives for analytical workloads). Every heap file — which is how PostgreSQL stores a table on disk — is divided into these 8 KB pages. The page count is tracked indirectly through the file system and internal catalog, not through a centralized allocation bitmap the way SQL Server does.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server</strong> uses a fixed page size of 8 KB, and this is not configurable. SQL Server pages are organized into extents — a group of eight contiguous 8 KB pages — and there are two types: uniform extents (owned by one object) and mixed extents (shared among multiple small objects, used for the first eight pages of any object to avoid wasting space).</p>
+
+<p class="text-gray-300 leading-relaxed">Understanding that the page is the atomic unit of I/O has immediate practical consequences. A query that reads 10 rows scattered across 10 different pages causes 10 page reads, while a query that reads 1,000 rows all on the same page causes just 1 page read. This is the physical reason why data locality matters, and it is the foundational argument behind index clustering, table organization, and fill factor settings.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">PostgreSQL's Heap Storage and Page Layout</h3>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL stores all tables as heap files — an unordered collection of pages where rows are inserted wherever free space is available. There is no physical ordering of rows on disk by default; the heap is a flat, unordered structure.</p>
+
+<p class="text-gray-300 leading-relaxed">Each PostgreSQL page contains four distinct areas: a page header (24 bytes of metadata including the page LSN for WAL coordination), an item identifier array, free space in the middle, and the actual tuple data at the bottom. This layout is sometimes described as growing from both ends toward the middle. Item identifiers are 4-byte pointers stored from the top of the usable area downward, and tuple data is stored from the bottom of the page upward. When the two regions meet, the page is full.</p>
+
+<p class="text-gray-300 leading-relaxed">Each row stored in a PostgreSQL heap is formally called a <strong class="text-white">tuple</strong>, and each tuple has a header that carries MVCC metadata: <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">xmin</code> (the transaction ID that inserted the row), <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">xmax</code> (the transaction ID that deleted or updated the row, if any), and the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ctid</code> (a physical location pointer in the form of page number and item offset). This MVCC structure means that an <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">UPDATE</code> in PostgreSQL does not modify the row in place — it inserts a new version of the tuple and marks the old version as dead. Dead tuples accumulate and must be reclaimed by <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VACUUM</code>. This is a defining characteristic of PostgreSQL's storage model, with significant implications for table bloat and maintenance.</p>
+
+<p class="text-gray-300 leading-relaxed">You can inspect page-level information using the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pageinspect</code> extension:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Enable the pageinspect extension first
+CREATE EXTENSION IF NOT EXISTS pageinspect;
+
+-- Inspect the raw header of the first page of a table
+SELECT lower, upper, special, pagesize
+FROM page_header(get_raw_page('orders', 0));
+
+-- Examine individual tuple visibility information on page 0
+SELECT lp, lp_off, lp_len, t_xmin, t_xmax, t_ctid
+FROM heap_page_items(get_raw_page('orders', 0))
+LIMIT 20;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server equivalent: examine page internals using DBCC PAGE
+-- First find a page number for the orders table
+SELECT TOP 1
+    allocated_page_page_id,
+    allocated_page_file_id
+FROM sys.dm_db_database_page_allocations(
+    DB_ID(), OBJECT_ID('orders'), NULL, NULL, 'DETAILED'
+);
+
+-- Then inspect that page (output goes to the error log / DBCC output)
+-- Replace 1 and 123 with your file_id and page_id from above
+DBCC PAGE(0, 1, 123, 3) WITH TABLERESULTS;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL tables are physically stored as files in the data directory under <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">$PGDATA/base/<db_oid>/</code>. Each table gets one or more files named by its relfilenode. When a table grows beyond 1 GB, PostgreSQL automatically splits it into numbered segment files (e.g., <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">12345</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">12345.1</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">12345.2</code>). This segmentation is transparent to the query engine but is worth knowing when performing file-level backups or diagnosing disk layout issues.</p>
+
+<p class="text-gray-300 leading-relaxed">One consequence of the heap model is that PostgreSQL has no concept of a "natural" row order. If you write a query without an <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ORDER BY</code>, rows can come back in any sequence — not necessarily insertion order, and certainly not always the same sequence on repeated runs, especially after VACUUMs and updates shift tuple positions.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">SQL Server's Page Types and the Clustered Index as the Table</h3>
+
+<p class="text-gray-300 leading-relaxed">SQL Server takes a fundamentally different approach. Rather than a plain heap as the default storage structure, SQL Server organizes the primary copy of table data within a B-tree structure called a <strong class="text-white">clustered index</strong>. When you create a table with a primary key, SQL Server creates a clustered index on that key automatically. The leaf level of that B-tree *is* the table data — there is no separate heap file. This makes the clustered index the most architecturally significant index in SQL Server, because choosing the wrong clustering key can affect every other index and every query against that table.</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server uses several specialized page types beyond the basic data page:</p>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Data pages (type 1):** Store actual row data.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Index pages (type 2):** Store B-tree index entries.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Text/Image pages (type 3):** Store LOB data (overflows for large values).</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **IAM pages (type 10):** Index Allocation Maps, tracking which extents belong to an object.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **PFS pages (type 11):** Page Free Space pages, recording how full each page is and whether it belongs to a mixed or uniform extent.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **GAM / SGAM pages (types 8 and 9):** Global Allocation Maps, tracking extent ownership across the file.</li>
+
+<p class="text-gray-300 leading-relaxed">Every SQL Server data file contains a PFS page at page 1, then GAM and SGAM pages at regular intervals, forming an allocation metadata layer that PostgreSQL handles differently through its Free Space Map (FSM) — a dedicated fork of the heap file.</p>
+
+<p class="text-gray-300 leading-relaxed">When a table does not have a clustered index, it is stored as a <strong class="text-white">heap</strong> in SQL Server — essentially the same concept as PostgreSQL's heap. SQL Server heaps come with their own maintenance concerns: forwarding pointers accumulate when variable-length rows grow and must be moved, and the only way to clean those up is to rebuild the heap or add a clustered index.</p>
+
+<p class="text-gray-300 leading-relaxed">You can check whether your tables are heaps or clustered index structures:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Find all tables that are stored as heaps (no clustered index)
+SELECT
+    t.name AS table_name,
+    SUM(p.rows) AS row_count,
+    SUM(a.total_pages) * 8 AS total_space_kb
+FROM sys.tables t
+JOIN sys.indexes i ON t.object_id = i.object_id
+JOIN sys.partitions p ON i.object_id = p.object_id AND i.index_id = p.index_id
+JOIN sys.allocation_units a ON p.partition_id = a.container_id
+WHERE i.type = 0  -- 0 = HEAP
+GROUP BY t.name
+ORDER BY total_space_kb DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- In PostgreSQL, all tables are heaps by default.
+-- Check table sizes and their associated indexes:
+SELECT
+    relname AS table_name,
+    pg_size_pretty(pg_relation_size(oid)) AS table_size,
+    pg_size_pretty(pg_indexes_size(oid)) AS indexes_size,
+    pg_size_pretty(pg_total_relation_size(oid)) AS total_size
+FROM pg_class
+WHERE relkind = 'r'
+  AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+ORDER BY pg_total_relation_size(oid) DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The absence of a clustered index concept in PostgreSQL has one visible benefit: <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">CLUSTER</code> exists as a one-time physical reorganization command, but it is not self-maintaining. SQL Server's clustered index, by contrast, continuously maintains physical row order as data is inserted, updated, and deleted — at the cost of page splits when rows are inserted in non-sequential key order.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Columnar Storage: When Row-by-Row Is the Wrong Model</h3>
+
+<p class="text-gray-300 leading-relaxed">Row-based storage (both heap and clustered B-tree) works well when queries need entire rows — transactional workloads, point lookups, row updates. But for analytical queries that aggregate a handful of columns across millions of rows, row storage is fundamentally inefficient: the engine reads entire pages containing many columns just to use one or two of them.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Columnar storage</strong> addresses this by storing each column's values contiguously on disk, rather than storing each row's values together. When a query aggregates <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SUM(revenue)</code> across ten million rows, a columnar engine reads only the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">revenue</code> column's data — skipping every other column entirely. This reduces I/O dramatically and enables aggressive compression because values within a single column tend to be similar (same data type, often repeating values).</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server's Columnstore Indexes</strong> are its primary columnar storage mechanism. Introduced in SQL Server 2012 and substantially improved in 2016 and 2019, columnstore indexes store data in compressed column segments of roughly one million rows each, grouped into <strong class="text-white">rowgroups</strong>. Each rowgroup is compressed independently. SQL Server uses two main compression schemes within columnstores: value encoding and dictionary encoding for low-cardinality columns, and delta encoding for near-sorted numeric sequences.</p>
+
+<p class="text-gray-300 leading-relaxed">There are two types of columnstore indexes in SQL Server:</p>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Nonclustered columnstore indexes (NCCI):** Added to a row-store table. The table stays in B-tree/heap format, and the NCCI provides an alternate columnar path for analytical queries.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Clustered columnstore indexes (CCI):** Replace the row-store entirely. The table's primary storage is columnar. This is the right choice for pure data warehouse tables.</li>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL</strong> does not include a native columnar storage format in the standard distribution. However, the <strong class="text-white">cstore_fdw</strong> extension (now largely superseded by <strong class="text-white">pg_mooncake</strong> and the <strong class="text-white">Hydra Columnar</strong> project) and the <strong class="text-white">TimescaleDB</strong> extension both provide columnar access paths. For production analytical workloads on PostgreSQL, many shops use PostgreSQL as the OLTP engine and route analytical queries to a separate columnar system (Redshift, DuckDB, ClickHouse) through foreign data wrappers, or they use partitioning combined with careful indexing to approximate columnar efficiency.</p>
+
+<p class="text-gray-300 leading-relaxed">You can create and inspect a columnstore index in SQL Server:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Create a clustered columnstore index on a fact table
+-- (This replaces the existing clustered B-tree index)
+CREATE CLUSTERED COLUMNSTORE INDEX cci_fact_sales
+ON fact_sales
+WITH (DROP_EXISTING = OFF, MAXDOP = 4);
+
+-- Inspect columnstore rowgroup health
+-- Compressed = good, OPEN = accumulating, TOMBSTONE = being cleaned
+SELECT
+    object_name(object_id) AS table_name,
+    row_group_id,
+    state_description,
+    total_rows,
+    deleted_rows,
+    size_in_bytes / 1024.0 / 1024.0 AS size_mb
+FROM sys.column_store_row_groups
+WHERE object_id = OBJECT_ID('fact_sales')
+ORDER BY row_group_id;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- PostgreSQL does not have native columnstore.
+-- Approximate columnar efficiency with partial indexes and covering indexes
+-- for analytical patterns:
+
+-- Example: a covering index that avoids heap access for a summary query
+CREATE INDEX idx_orders_covering_revenue
+ON orders (order_date)
+INCLUDE (customer_id, revenue, status)
+WHERE status IN ('completed', 'shipped');
+
+-- Check if the planner uses an index-only scan (no heap access)
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+SELECT order_date, SUM(revenue)
+FROM orders
+WHERE status = 'completed'
+  AND order_date &gt;= '2024-01-01'
+GROUP BY order_date;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server environments that mix OLTP and analytics on the same tables — a pattern called HTAP (Hybrid Transactional/Analytical Processing) — a nonclustered columnstore index on a row-store table is a powerful option. The optimizer will automatically choose the columnstore path for aggregation queries and the B-tree path for single-row lookups. In practice, this requires careful testing: the overhead of maintaining the columnstore's delta store during heavy OLTP writes can become noticeable.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Free Space Management, Bloat, and Fill Factor</h3>
+
+<p class="text-gray-300 leading-relaxed">Even with a well-chosen storage model, tables accumulate waste over time. Understanding how each database manages free space — and how to control it — is a daily operational concern for any production DBA.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL's Free Space Map (FSM)</strong> is a secondary file maintained alongside each heap file. When PostgreSQL needs to insert a new tuple, it consults the FSM to find a page with enough free space. The FSM does not track exact free space byte-by-byte; it approximates free space in 32-byte granularity buckets, which is efficient to store and fast to search. After a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VACUUM</code> runs, it updates the FSM so future insertions can reuse space from dead tuples.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL's <strong class="text-white">Visibility Map (VM)</strong> is another companion file per heap, introduced for index-only scan optimization. The VM tracks which pages contain only tuples visible to all current transactions (all-visible pages). If a page is all-visible, an index-only scan can return index data without touching the heap at all, which is a significant I/O reduction for read-heavy workloads.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Table bloat</strong> in PostgreSQL is the accumulation of dead tuples from updates and deletes. If <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VACUUM</code> does not run frequently enough — or if a long-running transaction prevents it from cleaning old tuple versions — dead tuples pile up, pages fill with non-reclaimable rows, and effective table size grows without the row count growing. Bloated tables cause sequential scans to read more pages than necessary and indexes to become sparse.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server</strong> manages free space through PFS pages, which record each page's fill percentage in one of five buckets: 0%, 1–50%, 51–80%, 81–95%, and 96–100%. When the storage engine needs a page for a new row, it walks the PFS to find a sufficiently empty page. SQL Server's equivalent of bloat is <strong class="text-white">page fragmentation</strong> — both internal (wasted space within a page due to deletes) and external (pages out of logical order on disk). Index rebuild (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ALTER INDEX ... REBUILD</code>) eliminates both; index reorganize (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ALTER INDEX ... REORGANIZE</code>) reduces external fragmentation without taking a full lock.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Fill factor</strong> is the control knob for proactive free space management. Setting fill factor below 100% instructs the engine to leave a percentage of each page empty during index builds. This reserves space for future inserts and in-place updates, reducing page splits for non-sequential insert patterns.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Set fill factor on a heavily-updated table to reduce HOT update failures
+-- HOT (Heap Only Tuple) updates avoid index updates when the indexed columns
+-- haven't changed, but only work if there's room on the same page
+ALTER TABLE orders SET (fillfactor = 80);
+
+-- Rebuild the table to apply the new fill factor
+VACUUM FULL orders;  -- or use pg_repack in production to avoid lock
+
+-- Check current fillfactor settings for tables
+SELECT relname, reloptions
+FROM pg_class
+WHERE relkind = 'r'
+  AND reloptions IS NOT NULL
+  AND relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public');</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Rebuild an index with a fill factor of 80% to reduce page splits
+-- on a table with frequent inserts in the middle of the key range
+ALTER INDEX ix_orders_customer_date
+ON orders
+REBUILD WITH (FILLFACTOR = 80, ONLINE = ON, MAXDOP = 4);
+
+-- Check current fragmentation and fill factor for all indexes on a table
+SELECT
+    i.name AS index_name,
+    ips.avg_fragmentation_in_percent,
+    ips.avg_page_space_used_in_percent,
+    ips.page_count
+FROM sys.indexes i
+CROSS APPLY sys.dm_db_index_physical_stats(
+    DB_ID(), OBJECT_ID('orders'), i.index_id, NULL, 'SAMPLED') ips
+WHERE ips.page_count &gt; 100
+ORDER BY ips.avg_fragmentation_in_percent DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Choosing the right fill factor is not a universal number. A table with purely sequential inserts (like an append-only log table keyed by an identity column) can safely use fill factor 100 — new rows always go to the end, and no page splits occur. A table with random key inserts (like a UUID primary key) needs a lower fill factor, typically 70–85%, to absorb inserts across the key range. Setting it too low wastes disk space and forces more page reads; setting it too high for a random-insert workload causes constant page splits, generating fragmentation faster than maintenance jobs can address it.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">TOAST, Row Overflow, and Large Object Handling</h3>
+
+<p class="text-gray-300 leading-relaxed">Real-world tables frequently contain columns that can be very large — JSON documents, binary files, long text fields, XML payloads. Both databases have mechanisms to handle values that exceed the maximum row size, and understanding these mechanisms helps explain performance surprises with large-value columns.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">TOAST (The Oversized-Attribute Storage Technique)</strong> is PostgreSQL's solution. The maximum size of a single PostgreSQL row is approximately 8 KB minus overhead (since a row must fit on one page, and a page is 8 KB). When a column value would push a row over this limit, PostgreSQL automatically stores the value out-of-line in a companion TOAST table. Each regular table that has any potentially-large columns has a corresponding TOAST table in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_toast</code>.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL applies up to three strategies to large values before or during TOAST storage:</p>
+<p class="text-gray-300 leading-relaxed">1. <strong class="text-white">PLAIN:</strong> No compression, no out-of-line storage. Used for fixed-size types that can never overflow.</p>
+<p class="text-gray-300 leading-relaxed">2. <strong class="text-white">EXTENDED (default for text, bytea, jsonb, etc.):</strong> Try compression first; if the compressed value still doesn't fit, move it out-of-line.</p>
+<p class="text-gray-300 leading-relaxed">3. <strong class="text-white">EXTERNAL:</strong> Store out-of-line without compression. Useful when the data is already compressed (e.g., PNG or GZIP content) and re-compression wastes CPU.</p>
+<p class="text-gray-300 leading-relaxed">4. <strong class="text-white">MAIN:</strong> Compress but try to keep in-line; only move out-of-line as a last resort.</p>
+
+<p class="text-gray-300 leading-relaxed">TOAST is largely transparent, but it has a visible performance cost: accessing a TOASTed column requires an additional fetch from the TOAST relation, which is an extra heap read. Queries that select <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SELECT *</code> on a table with large TOAST columns read dramatically more data than queries that select only the small columns. This is one of the most common sources of unexpected I/O in PostgreSQL — <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SELECT *</code> on a table with a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">jsonb</code> payload column can be orders of magnitude slower than selecting the specific non-TOAST columns you actually need.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server</strong> handles large values through <strong class="text-white">row overflow pages</strong> and <strong class="text-white">LOB (Large Object) pages</strong>. For <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VARCHAR(MAX)</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">NVARCHAR(MAX)</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VARBINARY(MAX)</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">XML</code>, and spatial types, SQL Server stores a 24-byte pointer in the main data page and places the actual content on separate LOB allocation units. For <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VARCHAR(n)</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">NVARCHAR(n)</code> columns with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">n > 8000 / 2</code>, the value can overflow onto a row-overflow page if the row's total width exceeds 8,060 bytes.</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server also supports <strong class="text-white">sparse columns</strong>, which store NULL values without any physical space cost. This is a useful feature when a table has hundreds of potential attributes but any given row populates only a small fraction of them — a pattern common in EAV (Entity-Attribute-Value) schemas.</p>
+
+<p class="text-gray-300 leading-relaxed">You can identify tables with significant TOAST usage in PostgreSQL:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Find tables with large TOAST tables relative to the main table
+SELECT
+    c.relname AS main_table,
+    t.relname AS toast_table,
+    pg_size_pretty(pg_relation_size(c.oid)) AS main_size,
+    pg_size_pretty(pg_relation_size(t.oid)) AS toast_size,
+    pg_size_pretty(pg_relation_size(t.oid)) AS toast_overhead
+FROM pg_class c
+JOIN pg_class t ON c.reltoastrelid = t.oid
+WHERE c.relkind = 'r'
+  AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')
+  AND pg_relation_size(t.oid) &gt; 1024 * 1024  -- only if TOAST &gt; 1 MB
+ORDER BY pg_relation_size(t.oid) DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Find tables with significant LOB allocation unit usage
+SELECT
+    t.name AS table_name,
+    SUM(CASE WHEN au.type_desc = 'IN_ROW_DATA'
+             THEN au.used_pages END) * 8 AS in_row_kb,
+    SUM(CASE WHEN au.type_desc = 'LOB_DATA'
+             THEN au.used_pages END) * 8 AS lob_kb,
+    SUM(CASE WHEN au.type_desc = 'ROW_OVERFLOW_DATA'
+             THEN au.used_pages END) * 8 AS overflow_kb
+FROM sys.tables t
+JOIN sys.partitions p ON t.object_id = p.object_id
+JOIN sys.allocation_units au ON p.partition_id = au.container_id
+GROUP BY t.name
+HAVING SUM(CASE WHEN au.type_desc = 'LOB_DATA'
+               THEN au.used_pages END) &gt; 0
+ORDER BY lob_kb DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">A practical guideline from production experience: if you have a table where most queries access only a few columns but one or two columns are large and rarely accessed (audit history, raw payload, attachment blob), consider splitting the table vertically — keeping the frequently accessed columns in one table and the large values in a related table accessed only when explicitly needed. This is not premature optimization; it is sound physical design that PostgreSQL's TOAST and SQL Server's LOB architecture do not automatically compensate for.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Key Takeaways</h3>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **The 8 KB page is the fundamental unit of I/O** in both PostgreSQL and SQL Server. Every performance decision around data layout, index design, and fill factor ultimately comes down to how many pages a query must read — minimizing that number is the goal.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **PostgreSQL stores all tables as unordered heaps**, which means physical row order is never guaranteed and dead tuples from MVCC accumulate over time, requiring regular `VACUUM` to reclaim space. SQL Server defaults to a clustered index structure where the leaf level of the B-tree *is* the table, making the choice of clustering key one of the most impactful physical design decisions on that platform.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Columnar storage fundamentally changes the I/O pattern for analytical queries**, reading only the columns referenced rather than entire rows. SQL Server's clustered and nonclustered columnstore indexes are production-ready for HTAP and warehouse workloads; PostgreSQL users typically rely on external columnar engines or specialized extensions for equivalent performance.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **TOAST (PostgreSQL) and LOB/overflow pages (SQL Server)** transparently handle large column values, but they</li>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
