@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 1: Introduction — Database Mastery</title>
+  <meta name="description" content="Database Mastery Chapter 1: Introduction. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Buy QueryOptimizer</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 1 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 1: Introduction</h2>
+
+<p class="text-gray-300 leading-relaxed">This chapter sets the stage for everything that follows. It explains why relational databases remain the backbone of modern software systems, how PostgreSQL and SQL Server each earned their place in the industry, and what it means to truly master a database platform rather than simply know how to write queries. By the end of this chapter, you will understand the philosophy behind this book, the type of thinking that separates a competent DBA from an exceptional one, and why comparing two world-class database systems side by side is one of the fastest ways to deepen your understanding of both.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Why Relational Databases Still Rule</h3>
+
+<p class="text-gray-300 leading-relaxed">Decades of hype have cycled through the data industry — object databases, XML databases, NoSQL, NewSQL, graph databases, time-series engines — and yet the relational database management system remains the most deployed, most trusted, and most battle-tested data storage technology in existence. The reasons are not sentimental. They are deeply practical.</p>
+
+<p class="text-gray-300 leading-relaxed">Relational databases offer something that no other storage paradigm has fully replicated: a mathematically grounded model for representing data and the relationships between it, combined with a declarative query language that lets you describe *what* you want without specifying *how* to retrieve it. That separation of concern — query intent from execution strategy — is what allows a well-tuned relational engine to serve billions of rows to millions of users with predictable behavior.</p>
+
+<p class="text-gray-300 leading-relaxed">The ACID guarantees that relational databases provide — atomicity, consistency, isolation, and durability — are not just features. They are promises. When a bank transfers money between accounts, when an airline reserves a seat, when a hospital records a medication dose, the database must guarantee that the operation either completes fully or does not happen at all, that concurrent users cannot corrupt each other's data, and that a committed transaction survives a server crash. NoSQL systems have made progress in this area, but most of them began by trading these guarantees away in exchange for scale-out simplicity, and many have spent the years since trying to earn them back.</p>
+
+<p class="text-gray-300 leading-relaxed">This is not a book that dismisses other technologies. Time-series data, document storage, and graph traversal all have legitimate use cases, and PostgreSQL itself has grown to handle many of them natively. But the relational model, SQL, and the discipline of database engineering remain foundational skills for any serious software professional. If you understand indexes, query planning, locking, replication, and schema design deeply, you will make better decisions with every data technology you encounter — not just the ones covered here.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">PostgreSQL and SQL Server — Two Platforms, One Discipline</h3>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL and Microsoft SQL Server represent two very different paths to the same destination: a production-grade relational database that organizations can stake their business on.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL began as a university research project at UC Berkeley in the 1980s, grew into an open-source community effort, and has since become one of the most feature-rich and standards-compliant relational databases available. It runs on Linux, macOS, Windows, and virtually every cloud platform. Its license costs nothing. Its source code is open to inspection. Its extension ecosystem — PostGIS for geospatial data, TimescaleDB for time-series, pgvector for machine learning embeddings — is extraordinary. PostgreSQL's community is global and highly active, releasing a major version every year. For these reasons, it has become the default choice for startups, SaaS companies, and an increasing number of enterprises that want power without vendor lock-in.</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server, on the other hand, is a commercial product built by Microsoft, first released in 1989, and deeply integrated with the Windows and Azure ecosystems. It has historically dominated enterprise environments in finance, healthcare, and manufacturing — industries where long-standing vendor relationships, Active Directory integration, and Microsoft's support infrastructure carry significant weight. SQL Server's tooling, particularly SQL Server Management Studio (SSMS) and the broader Business Intelligence stack, has long been a reference point for database administration UX. In recent years, SQL Server has expanded to Linux and containers, and Azure SQL Database has made it a viable cloud-native platform.</p>
+
+<p class="text-gray-300 leading-relaxed">The two systems share more than they differ. Both implement SQL-92 and much of SQL:2016. Both support transactions, foreign keys, triggers, views, stored procedures, partitioning, replication, and full-text search. Both have sophisticated query optimizers, rich monitoring infrastructure, and a mature ecosystem of tools. But their syntax diverges in important ways, their internal architectures make different trade-offs, and the communities around them have developed different cultures of best practice.</p>
+
+<p class="text-gray-300 leading-relaxed">This book teaches both platforms in parallel because that comparison is itself a learning tool. When you see how PostgreSQL and SQL Server solve the same problem differently, you stop treating either system's approach as the only natural way. You start seeing the *design decisions* underneath the syntax, and that is when real database mastery begins.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">What DBAs Actually Do in Production</h3>
+
+<p class="text-gray-300 leading-relaxed">There is a persistent gap between how databases are taught and how they are operated in the real world. In a classroom or a tutorial, the database always has clean data, plenty of resources, no concurrent users, and no history. In production, none of those things are true.</p>
+
+<p class="text-gray-300 leading-relaxed">A working DBA spends far less time writing CREATE TABLE statements than most textbooks would suggest. The actual work breaks down into a few recurring categories.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Performance investigation</strong> consumes more DBA time than any other activity. A query that ran in 200 milliseconds yesterday now takes 45 seconds. The application team says nothing changed. Your job is to find out why — whether the table statistics are stale, whether an execution plan changed after a parameter sniff, whether a new index is being ignored, whether a lock is causing waits, or whether a background maintenance job is starving the disk. You need tools, instincts, and a systematic approach.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Schema evolution</strong> is constant in any live system. Features ship, requirements change, data models grow. Adding a column to a table with 800 million rows is not a trivial operation. Changing a data type on a column that has foreign key dependencies requires careful sequencing. Running a migration without taking the application offline is a skill that takes real experience to develop.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Capacity and growth planning</strong> means knowing when your current hardware will stop being sufficient, how your query performance will degrade as row counts grow, and what architectural changes to make before you hit the wall rather than after.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Reliability and recovery</strong> means designing backup strategies, testing restores, understanding replication lag, knowing how to recover a database to a point in time after an accidental DELETE, and building systems that degrade gracefully rather than catastrophically.</p>
+
+<p class="text-gray-300 leading-relaxed">This book covers all of these dimensions. The SQL examples throughout are drawn from the kinds of problems that actually appear in production systems — not contrived exercises designed to illustrate syntax.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">How to Read This Book</h3>
+
+<p class="text-gray-300 leading-relaxed">This book is organized into 40 chapters that move from foundational concepts to advanced production topics. The progression is deliberate. Early chapters build the mental models you need to make sense of later ones. If you skip ahead to the chapter on query plan analysis without reading the chapters on indexes and statistics, you will be able to follow the mechanics but miss the intuition.</p>
+
+<p class="text-gray-300 leading-relaxed">That said, this is a reference as much as it is a narrative. Experienced DBAs who need a specific topic — partitioning, replication, locking behavior — can go directly to those chapters and find a self-contained treatment. Each chapter is written to stand on its own while still contributing to the larger arc of the book.</p>
+
+<p class="text-gray-300 leading-relaxed">Every chapter that covers a technical operation includes SQL examples for both PostgreSQL and SQL Server. This is a firm commitment throughout all 40 chapters. The examples are not toy demonstrations. They use realistic table names, realistic data volumes, and realistic operational contexts. Where the two platforms differ meaningfully — in syntax, in behavior, or in recommended practice — those differences are explained rather than glossed over.</p>
+
+<p class="text-gray-300 leading-relaxed">To get the most from this book, you should have access to at least one of the two databases. A local installation of PostgreSQL is free and takes five minutes to set up. SQL Server has a free Developer Edition and Express Edition that are fully functional for learning. Cloud options — Amazon RDS, Azure Database, Google Cloud SQL — all provide managed instances you can provision in minutes. You do not need a production environment to follow the examples, but running the queries yourself, observing the execution plans, and experimenting with variations will accelerate your understanding faster than reading alone.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">The Mindset of a Database Engineer</h3>
+
+<p class="text-gray-300 leading-relaxed">Technical knowledge is necessary but not sufficient. The DBAs who make the biggest impact on the systems they operate share a set of habits that go beyond knowing which commands to run.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">They measure before they optimize.</strong> Every performance problem has a root cause, and assumptions about root causes are usually wrong. The habit of reaching for monitoring data, query plans, and wait statistics before making changes is what separates systematic diagnosis from expensive guesswork.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">They understand the cost of their decisions.</strong> Adding an index makes reads faster and writes slower. Increasing the isolation level of a transaction reduces concurrency. Denormalizing a schema improves query speed and introduces the risk of data inconsistency. None of these trade-offs are inherently right or wrong — but every one of them must be understood and made consciously.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">They think about failure modes.</strong> What happens to this query when the table grows by a factor of ten? What happens to this transaction if the application crashes halfway through? What happens to this replication topology if the primary fails at 3 a.m.? Engineers who ask these questions routinely build systems that recover gracefully. Engineers who do not ask them build systems that fail dramatically.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">They document what they do and why.</strong> A migration script with no comments, a stored procedure with no description of its purpose, a scheduled job with no record of when it was created or why — these are organizational debts that accumulate silently until the original author has left the company and no one can explain why the system behaves the way it does.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">They treat the database as a system, not a black box.</strong> A query does not run in isolation. It competes for CPU, memory, I/O, and locks with every other query running at the same time. Understanding the database as a shared resource — with a memory manager, a lock manager, a transaction log, a background maintenance engine — changes how you design schemas, write queries, and plan maintenance windows.</p>
+
+<p class="text-gray-300 leading-relaxed">These principles run through every chapter of this book. The SQL syntax is teachable in weeks. The mindset takes longer, but it is what makes the difference between a DBA who keeps the lights on and one who makes the system genuinely better over time.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">A First Look: Checking What You're Working With</h3>
+
+<p class="text-gray-300 leading-relaxed">Before diving into any new database environment — whether you have just inherited a production system or spun up a fresh instance for this book — the first thing a DBA does is orient themselves. What version is running? What databases exist? What is the current state of connections and activity?</p>
+
+<p class="text-gray-300 leading-relaxed">These queries are simple, but they establish a habit that matters: always understand your environment before you change anything.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check the PostgreSQL version
+SELECT version();
+
+-- List all databases on the instance
+SELECT datname, pg_size_pretty(pg_database_size(datname)) AS size
+FROM pg_database
+ORDER BY pg_database_size(datname) DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check the SQL Server version
+SELECT @@VERSION;
+
+-- List all databases on the instance
+SELECT name,
+       state_desc,
+       CAST(SUM(size) * 8.0 / 1024 AS DECIMAL(10,2)) AS size_mb
+FROM sys.databases
+LEFT JOIN sys.master_files ON sys.databases.database_id = sys.master_files.database_id
+GROUP BY name, state_desc
+ORDER BY size_mb DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Notice the difference in approach immediately. PostgreSQL exposes much of its metadata through views in the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_catalog</code> schema and through built-in functions like <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_database_size()</code>. SQL Server surfaces the same information through the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys</code> schema, which contains dynamic management views (DMVs) and catalog views that will appear throughout this book. Both systems give you the information you need — they just ask you to look in different places.</p>
+
+<p class="text-gray-300 leading-relaxed">Checking active connections is equally important when you first approach a system under investigation:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Show active connections and what they are doing
+SELECT pid,
+       usename,
+       application_name,
+       client_addr,
+       state,
+       query_start,
+       left(query, 80) AS current_query
+FROM pg_stat_activity
+WHERE state != 'idle'
+ORDER BY query_start;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Show active sessions and their current requests
+SELECT s.session_id,
+       s.login_name,
+       s.program_name,
+       s.host_name,
+       r.status,
+       r.start_time,
+       LEFT(t.text, 80) AS current_query
+FROM sys.dm_exec_sessions s
+LEFT JOIN sys.dm_exec_requests r ON s.session_id = r.session_id
+OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE s.is_user_process = 1
+ORDER BY r.start_time;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_activity</code> in PostgreSQL and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_sessions</code> combined with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_requests</code> in SQL Server are two views you will return to constantly. They are the pulse monitors of a running database instance.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Key Takeaways</h3>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Relational databases persist as the dominant data storage technology because of their mathematically grounded data model, SQL's declarative power, and the ACID guarantees that make them trustworthy for critical operations.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> PostgreSQL and SQL Server are both world-class platforms with distinct histories, ecosystems, and communities; studying them side by side reveals the design decisions that underlie their surface differences and accelerates mastery of both.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Production database work centers on performance investigation, schema evolution, capacity planning, and reliability engineering — not on writing CREATE TABLE statements or memorizing syntax.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Every SQL example in this book is shown for both PostgreSQL and SQL Server using correct, platform-native syntax; metadata lives in `pg_catalog` and `information_schema` in PostgreSQL, and in `sys.*` views and DMVs in SQL Server.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> The mindset of a skilled database engineer — measure before optimizing, understand trade-offs explicitly, anticipate failure modes, document decisions, and treat the database as a shared system — is as important as any technical knowledge this book will teach.</li>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · Database Mastery</div>
+  </footer>
+</body>
+</html>
