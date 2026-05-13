@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Products — Rajesh Guntupalli</title>
+  <meta name="description" content="Self-hosted database tools for DBAs and developers. PostgreSQL and SQL Server performance tools." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="index.html"        class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="products.html"     class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Products</a>
+        <a href="book.html"         class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="blog/index.html"   class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="about.html"        class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Buy QueryOptimizer</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="pt-28 pb-24 px-6 max-w-5xl mx-auto">
+    <div class="mb-14">
+      <p class="text-xs font-semibold text-blue-400 uppercase tracking-widest mb-3">Products</p>
+      <h1 class="text-4xl font-extrabold mb-4">Self-hosted database tools</h1>
+      <p class="text-gray-400 max-w-2xl">Tools built for DBAs who want real answers without sending their data to the cloud. Every product runs on your own server, installs in minutes, and comes with a one-time price.</p>
+    </div>
+
+    <!-- QueryOptimizer -->
+    <div class="bg-gray-900/60 border border-blue-900/30 rounded-2xl p-8 mb-6">
+      <div class="flex items-start justify-between gap-4 mb-5">
+        <div class="flex items-center gap-3">
+          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-900/40">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+          </div>
+          <div>
+            <h2 class="text-xl font-bold text-white">QueryOptimizer</h2>
+            <p class="text-xs text-blue-400">Self-Hosted SQL Performance Workbench</p>
+          </div>
+        </div>
+        <span class="shrink-0 text-xs bg-green-900/40 border border-green-700/40 text-green-400 px-3 py-1 rounded-full font-medium">Available now</span>
+      </div>
+
+      <p class="text-gray-400 text-sm leading-relaxed mb-6">
+        A browser-based workbench for diagnosing slow queries, finding missing indexes, and rewriting bad SQL.
+        Works with PostgreSQL 12–17 and SQL Server 2016–2022. No cloud, no subscription, installs in 5 minutes with Docker.
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-4 mb-6">
+        <div class="bg-gray-800/60 rounded-xl p-4">
+          <p class="text-xs font-semibold text-blue-400 mb-1">EXPLAIN Visualizer</p>
+          <p class="text-xs text-gray-500">Interactive plan tree with automatic warnings for seq scans and row estimate drift.</p>
+        </div>
+        <div class="bg-gray-800/60 rounded-xl p-4">
+          <p class="text-xs font-semibold text-green-400 mb-1">Index Advisor</p>
+          <p class="text-xs text-gray-500">Missing index recommendations from live catalog data with ready-to-copy DDL.</p>
+        </div>
+        <div class="bg-gray-800/60 rounded-xl p-4">
+          <p class="text-xs font-semibold text-orange-400 mb-1">Slow Query Dashboard</p>
+          <p class="text-xs text-gray-500">Worst queries ranked by avg execution time from pg_stat_statements and SQL Server DMVs.</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+           class="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+          Buy Now — $149
+        </a>
+        <a href="https://rajeshguntupalli59.github.io/query-optimizer/"
+           class="px-6 py-3 border border-gray-700 hover:border-gray-500 text-gray-300 hover:text-white font-medium rounded-xl text-sm transition">
+          See Product Page
+        </a>
+        <span class="text-xs text-gray-600 ml-auto">One-time · 1 license = 1 installation</span>
+      </div>
+    </div>
+
+    <!-- Coming soon -->
+    <div class="bg-gray-900/30 border border-dashed border-gray-800 rounded-2xl p-8 text-center">
+      <p class="text-gray-600 text-sm mb-2">More tools coming soon</p>
+      <p class="text-xs text-gray-700">Subscribe to get notified when new products launch.</p>
+      <form class="flex gap-2 max-w-sm mx-auto mt-4" onsubmit="return false;">
+        <input type="email" placeholder="your@email.com"
+          class="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 transition" />
+        <button class="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">Notify me</button>
+      </form>
+    </div>
+  </div>
+
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-gray-600">
+      <span>© 2026 Rajesh Guntupalli</span>
+      <div class="flex gap-4">
+        <a href="products.html"   class="hover:text-gray-400 transition">Products</a>
+        <a href="book.html"       class="hover:text-gray-400 transition">Book</a>
+        <a href="blog/index.html" class="hover:text-gray-400 transition">Blog</a>
+        <a href="about.html"      class="hover:text-gray-400 transition">About</a>
+        <a href="mailto:queryoptimizer78@gmail.com" class="hover:text-gray-400 transition">Contact</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
