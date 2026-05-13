@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 18: Logging and Auditing — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 18: Logging and Auditing. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 18 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 18: Logging and Auditing</h2>
+
+<p class="text-gray-300 leading-relaxed">Every production database tells a story through its logs. When a query suddenly degrades at 2 AM, when a compliance auditor asks who changed a table's data last Tuesday, or when a security team needs to know which accounts accessed sensitive records — the answer lives in your logging and auditing infrastructure, assuming you built it correctly. This chapter covers how PostgreSQL and SQL Server each approach logging and auditing, from the raw mechanics of writing log entries to building robust audit trails that satisfy regulatory requirements. By the end, you will know how to configure both systems to capture exactly what you need, interpret what you find, and avoid the common pitfalls that leave DBAs without the evidence they need when it matters most.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">What Gets Logged and Why It Matters</h3>
+
+<p class="text-gray-300 leading-relaxed">Logging and auditing are related but distinct disciplines. Logging is the continuous recording of database activity — errors, connections, slow queries, lock waits, startup events, and more. It is primarily an operational tool. Auditing is the deliberate, structured capture of who did what to which data, and when. It is primarily a compliance and security tool. Most production environments need both, and the two often share infrastructure.</p>
+
+<p class="text-gray-300 leading-relaxed">Both PostgreSQL and SQL Server generate logs at multiple layers. There is the database engine's internal log, which captures operational events. There is the transaction log (WAL in PostgreSQL, the LDF file in SQL Server), which is a durability mechanism and not a readable audit trail. And there are purpose-built audit mechanisms that can be configured to write structured records of specific activities. Understanding which layer handles which concern keeps you from building redundant systems or, worse, assuming something is being captured when it is not.</p>
+
+<p class="text-gray-300 leading-relaxed">The practical reasons DBAs care about logging are consistent across environments. You need logs to diagnose performance problems — slow query logs show which statements are causing pain. You need logs to investigate security incidents — who connected, from where, and when. You need logs for compliance — HIPAA, PCI-DSS, SOX, and GDPR all have specific requirements around data access records. And you need logs for capacity planning — connection counts, error rates, and query volume over time reveal trends before they become crises.</p>
+
+<p class="text-gray-300 leading-relaxed">A common mistake is treating logging as a set-and-forget configuration. Log files fill up, rotate poorly, or capture so much noise that the signal is buried. Getting logging right means understanding not just what to turn on, but what the tradeoffs are between verbosity, storage cost, and query overhead.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Configuring the PostgreSQL Logging System</h3>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL's logging is controlled through <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">postgresql.conf</code>, and the depth of what it can capture is impressive once you understand the options. The two most operationally important areas are where logs go and what gets written.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Destination and format</strong> are set via <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">log_destination</code>. PostgreSQL can write logs to <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">stderr</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">csvlog</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">jsonlog</code> (added in PostgreSQL 15), or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">syslog</code>. For most environments, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">csvlog</code> or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">jsonlog</code> paired with the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">logging_collector</code> process is the right choice because it gives you structured, parseable output. The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">logging_collector</code> is a background process that intercepts stderr output and writes it to files, handling rotation cleanly.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code># postgresql.conf
+logging_collector = on
+log_destination = 'csvlog'
+log_directory = 'log'
+log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+log_rotation_age = 1d
+log_rotation_size = 100MB</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">What gets logged</strong> is where most of the decisions live. The most important settings for a production DBA are:</p>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `log_min_duration_statement`: Logs any statement taking longer than the specified number of milliseconds. Set this to something like `1000` (one second) to start, and adjust based on your workload. Setting it to `0` logs everything, which is useful for debugging but ruinous in production due to I/O overhead.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `log_connections` and `log_disconnections`: Log when sessions start and end. Modest overhead, high value for security audits.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `log_lock_waits`: Log when a session waits longer than `deadlock_timeout` for a lock. Essential for diagnosing contention.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `log_error_verbosity`: Controls how much detail appears in error messages — `terse`, `default`, or `verbose`.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `log_line_prefix`: A format string that prefixes each log line with contextual data. A production-quality prefix captures timestamp, PID, user, database, and client address.</li>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code># A production-grade log_line_prefix
+log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '</code></pre>
+
+<p class="text-gray-300 leading-relaxed">This prefix means every log line includes the timestamp, process ID, line number within that session, username, database name, application name, and client host. When you are searching logs for a specific user's activity during an incident window, this context is what makes the search tractable.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Statement-level logging</strong> can be tuned further. <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">log_statement</code> accepts values of <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">none</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ddl</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">mod</code>, or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">all</code>. Setting it to <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ddl</code> logs all DDL statements (CREATE, ALTER, DROP) without logging every SELECT, which is a reasonable middle ground for many environments. Setting it to <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">mod</code> adds DML (INSERT, UPDATE, DELETE). <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">all</code> should only be used temporarily during troubleshooting.</p>
+
+<p class="text-gray-300 leading-relaxed">To query what PostgreSQL has logged recently when using <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">csvlog</code>, you can load the CSV log into a temporary table or use the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_read_file()</code> function for quick inspection. PostgreSQL 15 and later expose recent logs through the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_log_backend_memory_contexts()</code> function and, for structured logs, through external tooling. For most teams, shipping logs to a centralized system (ELK stack, Splunk, CloudWatch) is the right long-term approach.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Configuring SQL Server Logging and the Error Log</h3>
+
+<p class="text-gray-300 leading-relaxed">SQL Server's equivalent of PostgreSQL's operational log is the <strong class="text-white">SQL Server Error Log</strong>. It is written to a flat text file by default and captures server startup events, backup completions, login failures, database corruption alerts, and various informational messages. Unlike PostgreSQL's configurable log verbosity, the Error Log is less flexible — you cannot easily tell it to log slow queries there. That responsibility falls to other mechanisms.</p>
+
+<p class="text-gray-300 leading-relaxed">The Error Log location is set during installation but can be changed. SQL Server keeps a configurable number of archived logs (default is 6 archives plus the current one), which can be dangerously small on busy systems. Increase this in production:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- View current Error Log configuration
+EXEC sp_configure 'show advanced options', 1;
+RECONFIGURE;
+EXEC sp_configure 'number of error log files', 30;
+RECONFIGURE;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Reading the current Error Log programmatically:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Read the current PostgreSQL log file (last 100 lines via pg_read_file)
+SELECT *
+FROM pg_read_file(
+    pg_current_logfile(),
+    0,
+    pg_stat_file(pg_current_logfile()).size
+);</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Read the current SQL Server Error Log
+EXEC sp_readerrorlog 0, 1;
+
+-- Read with filtering for a specific keyword
+EXEC sp_readerrorlog 0, 1, 'Login failed';</code></pre>
+
+<p class="text-gray-300 leading-relaxed">For <strong class="text-white">slow query capture</strong> in SQL Server, the primary tool is the <strong class="text-white">Query Store</strong> (covered in depth in Chapter 12), combined with <strong class="text-white">Extended Events</strong>. Extended Events is SQL Server's lightweight, high-performance event tracing framework, and it replaced the older SQL Trace and SQL Server Profiler mechanisms. Never use SQL Server Profiler on a production server — it imposes server-side tracing overhead that can cripple a busy system. Extended Events runs with far less impact.</p>
+
+<p class="text-gray-300 leading-relaxed">A minimal Extended Events session to capture slow queries looks like this:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Create an Extended Events session to capture queries over 2 seconds
+CREATE EVENT SESSION [SlowQueryCapture] ON SERVER
+ADD EVENT sqlserver.sql_statement_completed (
+    WHERE duration &gt; 2000000  -- duration is in microseconds
+    ACTION (
+        sqlserver.sql_text,
+        sqlserver.database_name,
+        sqlserver.username,
+        sqlserver.client_hostname,
+        sqlserver.plan_handle
+    )
+)
+ADD TARGET package0.ring_buffer (SET max_memory = 51200)
+WITH (
+    MAX_DISPATCH_LATENCY = 5 SECONDS
+);
+
+ALTER EVENT SESSION [SlowQueryCapture] ON SERVER STATE = START;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The ring buffer target holds events in memory. For persistent capture, switch to <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">package0.event_file</code> with a file path. Be mindful of disk space — a high-traffic server can write event files quickly if the filter threshold is too low.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Building Audit Trails: pgAudit and SQL Server Audit</h3>
+
+<p class="text-gray-300 leading-relaxed">Operational logs capture what the database is doing. Audit trails capture what users are doing to data. These are different goals, and both databases have dedicated mechanisms for it.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL: pgAudit</strong></p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL does not include a built-in SQL-level audit facility in its core — the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">log_statement</code> setting gets you some of the way there, but it lacks the structure that compliance teams need. The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pgaudit</code> extension fills this gap. It hooks into PostgreSQL's standard logging infrastructure and writes detailed audit records for the statement types you configure.</p>
+
+<p class="text-gray-300 leading-relaxed">pgAudit has two levels of configuration: session audit (captures all activity from specific sessions) and object audit (captures activity on specific tables, views, or sequences). In practice, object-level auditing is what most compliance requirements need — you want to know who touched the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">payments</code> table, not every query in the database.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- After installing the extension and adding it to shared_preload_libraries:
+CREATE EXTENSION IF NOT EXISTS pgaudit;
+
+-- Set session-level audit logging (in postgresql.conf or via ALTER SYSTEM)
+-- pgaudit.log = 'write, ddl'
+-- This captures INSERT, UPDATE, DELETE, TRUNCATE and all DDL
+
+-- For object-level auditing, create an audit role and grant it SELECT on sensitive tables
+CREATE ROLE audit_role;
+GRANT SELECT ON TABLE customer_payments TO audit_role;
+
+-- Then set the object audit log to use that role
+-- pgaudit.role = 'audit_role'</code></pre>
+
+<p class="text-gray-300 leading-relaxed">With pgAudit enabled and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pgaudit.log = 'write, ddl'</code>, each captured statement generates a log entry structured like:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>AUDIT: SESSION,1,1,WRITE,INSERT,TABLE,public.customer_payments,
+INSERT INTO customer_payments VALUES (...)</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The fields — audit type, statement ID, substatement ID, class, command, object type, object name, and statement text — give compliance tools something consistent to parse.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server: SQL Server Audit</strong></p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server has a mature, built-in audit framework that was introduced in SQL Server 2008. It works through a three-layer model: <strong class="text-white">Server Audit</strong> (defines where audit records go), <strong class="text-white">Server Audit Specification</strong> (captures server-level events like logins and server role membership changes), and <strong class="text-white">Database Audit Specification</strong> (captures database-level events like SELECT, INSERT, UPDATE, DELETE on specific objects).</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Step 1: Create the Server Audit (writes to file)
+CREATE SERVER AUDIT [ComplianceAudit]
+TO FILE (
+    FILEPATH = 'C:\SQLAudit\',
+    MAXSIZE = 100 MB,
+    MAX_ROLLOVER_FILES = 10,
+    RESERVE_DISK_SPACE = OFF
+)
+WITH (
+    QUEUE_DELAY = 1000,
+    ON_FAILURE = CONTINUE
+);
+
+ALTER SERVER AUDIT [ComplianceAudit] WITH (STATE = ON);
+
+-- Step 2: Create a Database Audit Specification
+USE SensitiveDB;
+GO
+
+CREATE DATABASE AUDIT SPECIFICATION [CustomerDataAudit]
+FOR SERVER AUDIT [ComplianceAudit]
+ADD (SELECT, INSERT, UPDATE, DELETE ON dbo.customer_payments BY public),
+ADD (EXECUTE ON dbo.process_payment BY public)
+WITH (STATE = ON);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ON_FAILURE</code> setting controls what happens if the audit target is unavailable. <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">CONTINUE</code> lets the server keep running; <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SHUTDOWN</code> stops the server to prevent unaudited operations from occurring. Regulated environments often require <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SHUTDOWN</code> to guarantee audit completeness, but this is a serious decision — a full disk or unavailable network share will bring down your SQL Server instance.</p>
+
+<p class="text-gray-300 leading-relaxed">Querying SQL Server audit files after the fact:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Read audit records from the audit files
+SELECT
+    event_time,
+    action_id,
+    succeeded,
+    server_principal_name,
+    database_name,
+    object_name,
+    statement,
+    client_ip
+FROM sys.fn_get_audit_file(
+    'C:\SQLAudit\ComplianceAudit*.sqlaudit',
+    DEFAULT,
+    DEFAULT
+)
+WHERE object_name = 'customer_payments'
+ORDER BY event_time DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Query pgAudit entries from the log (loaded into a staging table or parsed externally)
+-- If using csvlog, load it into a temporary table first:
+COPY tmp_pg_log FROM '/var/log/postgresql/postgresql-2024-01-15_000000.csv'
+WITH (FORMAT csv);
+
+SELECT
+    log_time,
+    user_name,
+    database_name,
+    message
+FROM tmp_pg_log
+WHERE message LIKE 'AUDIT%'
+  AND message LIKE '%customer_payments%'
+ORDER BY log_time DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Capturing Login Activity and Privilege Escalations</h3>
+
+<p class="text-gray-300 leading-relaxed">One of the most important audit concerns in any regulated environment is tracking authentication events and privilege changes. A compromised credential or an unauthorized privilege grant can be the beginning of a serious breach, and the audit trail is often the only way to establish timeline and scope after the fact.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL Login Auditing</strong></p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">log_connections</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">log_disconnections</code> settings are the first line here. When enabled, every connection attempt — successful or failed — appears in the server log with the username, database, client address, and authentication method. Failed authentication attempts log at the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">LOG</code> severity level, which means they appear in the log regardless of <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">log_min_messages</code> settings.</p>
+
+<p class="text-gray-300 leading-relaxed">For privilege changes, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">log_statement = 'ddl'</code> captures GRANT and REVOKE statements because they are DDL-class operations in PostgreSQL's categorization. pgAudit with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pgaudit.log = 'role'</code> specifically captures role membership changes, which is the PostgreSQL equivalent of group membership auditing.</p>
+
+<p class="text-gray-300 leading-relaxed">The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_activity</code> view gives you a real-time picture of current sessions, which complements the historical log:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Find all active connections, who they are, and what they're running
+SELECT
+    pid,
+    usename,
+    application_name,
+    client_addr,
+    backend_start,
+    state,
+    wait_event_type,
+    wait_event,
+    LEFT(query, 100) AS query_snippet
+FROM pg_stat_activity
+WHERE state != 'idle'
+  AND pid != pg_backend_pid()
+ORDER BY backend_start;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server Login Auditing</strong></p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server's Server Audit Specification can capture login events explicitly:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Add login success and failure tracking to the server audit specification
+CREATE SERVER AUDIT SPECIFICATION [LoginAudit]
+FOR SERVER AUDIT [ComplianceAudit]
+ADD (SUCCESSFUL_LOGIN_GROUP),
+ADD (FAILED_LOGIN_GROUP),
+ADD (LOGOUT_GROUP),
+ADD (SERVER_ROLE_MEMBER_CHANGE_GROUP),
+ADD (DATABASE_ROLE_MEMBER_CHANGE_GROUP)
+WITH (STATE = ON);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">*_GROUP</code> notation refers to SQL Server's audit action groups — predefined collections of related events. <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SERVER_ROLE_MEMBER_CHANGE_GROUP</code> fires whenever someone is added to or removed from a fixed server role (like <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sysadmin</code>). <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">DATABASE_ROLE_MEMBER_CHANGE_GROUP</code> does the same for database roles. These two groups are non-negotiable for any security-focused audit configuration.</p>
+
+<p class="text-gray-300 leading-relaxed">For real-time session visibility, SQL Server's equivalent of <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_activity</code> is <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_sessions</code> joined to <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_requests</code>:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Current active sessions with query text and wait information
+SELECT
+    s.session_id,
+    s.login_name,
+    s.host_name,
+    s.program_name,
+    s.login_time,
+    r.status,
+    r.wait_type,
+    r.wait_time,
+    DB_NAME(r.database_id) AS database_name,
+    SUBSTRING(t.text, 1, 100) AS query_snippet
+FROM sys.dm_exec_sessions s
+LEFT JOIN sys.dm_exec_requests r
+    ON s.session_id = r.session_id
+OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE s.is_user_process = 1
+ORDER BY s.login_time;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Log Management, Retention, and Performance Tradeoffs</h3>
+
+<p class="text-gray-300 leading-relaxed">Logging infrastructure that is not maintained eventually becomes a liability. Logs that fill up disk cause PostgreSQL to crash or SQL Server to stop auditing (depending on your <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ON_FAILURE</code> setting). Logs retained longer than needed create compliance exposure of a different kind — old records containing sensitive data you no longer need. And verbose logging on a high-throughput system can measurably degrade query performance.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Rotation and retention</strong> policies should be written down and automated. For PostgreSQL, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">log_rotation_age</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">log_rotation_size</code> handle file rotation. Deletion of old log files needs an external process — a cron job or a log management tool. A common pattern is retaining 90 days of operational logs locally and shipping to cold storage (S3, Azure Blob) for long-term compliance retention.</p>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server audit files, the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">MAX_ROLLOVER_FILES</code> parameter controls how many archived files are kept before the oldest is overwritten. This alone is not a retention policy — it is a circular buffer. You need an external process to archive and purge files on a schedule that matches your compliance requirements.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Performance impact</strong> of logging deserves direct attention. The costs come from three places: the I/O of writing log records, any server-side processing to filter or format events, and the overhead of the audit hook intercepting query execution.</p>
+
+<p class="text-gray-300 leading-relaxed">For PostgreSQL, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">log_min_duration_statement</code> has essentially no overhead when queries complete faster than the threshold, because the decision is made post-execution. Logging itself is asynchronous through the logging collector process. The real performance risk is <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">log_statement = 'all'</code> or very aggressive pgAudit settings on a write-heavy OLTP system — benchmark before enabling in production.</p>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server, the Extended Events ring buffer target is lightweight, but the event_file target writing to a slow disk can introduce latency. The SQL Server Audit framework was designed for this use case and is generally efficient, but auditing high-frequency tables (millions of rows per hour) with row-level SELECT auditing will produce enormous audit files and measurable overhead. Profile your write rates before committing to fine-grained object-level auditing.</p>
+
+<p class="text-gray-300 leading-relaxed">A practical approach is to tier your logging: capture everything at the connection and DDL level always, capture slow queries with a reasonable threshold always, and enable fine-grained data-access auditing only for explicitly identified sensitive objects. This gives you comprehensive coverage of security-relevant events without logging every SELECT on a lookup table that changes once a year.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Log centralization</strong> is the other operational imperative. Logs sitting on the database server are only as available as the server itself. If you are investigating a security incident on a compromised host, you cannot trust logs stored there. Shipping logs in real-time to an independent, append-only destination (a SIEM, a managed log service, or even a write-once S3 bucket) gives you a trustworthy audit record. For regulated environments, this is often not optional.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Key Takeaways</h3>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Logging and auditing serve different masters.** Operational logging supports incident diagnosis and performance monitoring; audit logging supports compliance, security, and forensic investigations. Configure them separately with their respective goals in mind rather than trying to satisfy both with a single verbose log stream.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **PostgreSQL's logging is highly configurable through `postgresql.conf`.** `log_min_duration_statement`, `log_connections`, `log_lock_waits`, and `log_statement = 'ddl'` form a solid production baseline. The `pgaudit` extension adds structured, compliance-grade audit output when statement-level logging is insufficient.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **SQL Server provides first-class audit infrastructure through Server Audit.** The three-layer model (Server Audit → Server Audit Specification → Database Audit Specification) gives you precise control over what is captured and where it is written. Always configure the `ON_FAILURE` behavior deliberately based on whether your environment prioritizes availability or audit completeness.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Authentication and privilege events are the highest-value audit targets.** Failed logins, privilege escalations, and role membership changes are the signals that matter most for security investigations. Both databases can capture these with modest configuration overhead, and most compliance frameworks require it explicitly.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Log management is not optional infrastructure.** Rotation, retention schedules, centralized shipping, and performance impact analysis are all production responsibilities. Verbose logging without a management strategy degrades database performance, fills disks, and leaves you with an untrustworthy record when you need it most. Design your logging architecture with the same rigor you apply to your backup strategy.</li>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
