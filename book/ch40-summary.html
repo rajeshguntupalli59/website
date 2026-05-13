@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 40: Final Summary and Best Practices — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 40: Final Summary and Best Practices. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 40 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 40: Final Summary and Best Practices</h2>
+
+<p class="text-gray-300 leading-relaxed">Thirty-nine chapters ago, we started with the basics of how databases store and retrieve data. By now, you have worked through indexing strategies, query optimization, backup and recovery, high availability, security hardening, performance monitoring, replication, partitioning, and dozens of other topics that define the daily work of a professional DBA. This final chapter does not introduce new commands or new concepts — instead, it steps back and ties everything together. It revisits the most important lessons from across the book, frames them as actionable principles, and gives you a mental model for how to operate PostgreSQL and SQL Server environments with the confidence and discipline that production systems demand.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">The DBA Mindset: How Professionals Think About Databases</h3>
+
+<p class="text-gray-300 leading-relaxed">The difference between a DBA who keeps systems running smoothly and one who spends every week firefighting is rarely about knowing more commands. It is about how they think. Experienced DBAs operate with a set of habits and instincts that help them anticipate problems rather than simply react to them.</p>
+
+<p class="text-gray-300 leading-relaxed">The first habit is treating every database as a living system. Databases do not stay in the same state from day to day. Data grows, query patterns shift, indexes bloat, statistics go stale, and hardware degrades. A DBA who does a one-time setup and assumes it will hold indefinitely is setting themselves up for surprises. Routine monitoring, scheduled maintenance, and regular review of query performance are not optional extras — they are the job.</p>
+
+<p class="text-gray-300 leading-relaxed">The second habit is respecting the gap between development and production. A query that runs in two seconds against a ten-thousand-row test table might run for forty minutes against a two-hundred-million-row production table. Index choices that work fine in development can collapse under production concurrency. Schema changes that go smoothly in a single-node test environment can cause hours of replication lag in production. Every decision needs to be evaluated through the lens of production conditions, not test conditions.</p>
+
+<p class="text-gray-300 leading-relaxed">The third habit is documentation discipline. Every non-trivial change to a production system — a schema migration, an index added or dropped, a configuration parameter changed, a stored procedure modified — should be recorded with a timestamp, a reason, and the name of the person who made it. This sounds bureaucratic until the moment a system starts behaving strangely and nobody can remember what changed three weeks ago.</p>
+
+<p class="text-gray-300 leading-relaxed">The fourth habit is healthy skepticism toward tools and defaults. Database engines ship with default configurations tuned for general-purpose workloads, not for your specific application. Default autovacuum settings, default memory allocations, default parallelism thresholds — all of these require tuning for production environments. Tools that claim to automatically optimize your database are useful starting points, not replacements for understanding what is actually happening inside the engine.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">PostgreSQL Best Practices: The Lessons That Matter Most</h3>
+
+<p class="text-gray-300 leading-relaxed">Across the PostgreSQL chapters of this book, certain lessons appeared repeatedly in different contexts. This section consolidates the most important ones into a coherent set of operating principles.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Vacuum is not optional.</strong> PostgreSQL's MVCC model means that dead tuples accumulate with every update and delete operation. If autovacuum is not keeping pace — which happens when tables receive very high write volumes, when autovacuum is misconfigured, or when long-running transactions hold back the oldest transaction horizon — table bloat grows, index bloat follows, and eventually query performance degrades. Monitor <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">n_dead_tup</code> in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_user_tables</code> regularly. Run manual VACUUM ANALYZE after bulk data loads. Tune autovacuum cost delay and scale factor parameters for your busiest tables rather than relying on cluster-wide defaults.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Identify tables with high dead tuple counts that need attention
+SELECT
+    schemaname,
+    relname AS table_name,
+    n_live_tup,
+    n_dead_tup,
+    ROUND(n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0) * 100, 2) AS dead_pct,
+    last_autovacuum,
+    last_autoanalyze
+FROM pg_stat_user_tables
+WHERE n_dead_tup &gt; 10000
+ORDER BY n_dead_tup DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Connection management deserves serious attention.</strong> PostgreSQL creates a new operating system process for every connection. At low connection counts this is invisible. At three hundred or five hundred connections, the overhead becomes measurable and eventually becomes a bottleneck. PgBouncer in transaction pooling mode is the standard solution for high-concurrency OLTP workloads. Applications that open connections at startup and keep them alive indefinitely without pooling are a recurring cause of scalability problems in PostgreSQL environments.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">EXPLAIN ANALYZE is your primary diagnostic tool.</strong> When a query is slow, the first step is always to read the execution plan. Seq scans on large tables, nested loop joins with high row estimates, hash batches spilling to disk — these are all visible in the plan output. The habit of reading execution plans fluently, understanding what each node type does, and recognizing the gap between estimated and actual row counts is one of the highest-value skills a PostgreSQL DBA can develop.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Generate a verbose execution plan with buffer usage and timing
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+SELECT
+    o.order_id,
+    o.order_date,
+    c.customer_name,
+    SUM(oi.quantity * oi.unit_price) AS order_total
+FROM orders o
+JOIN customers c ON c.customer_id = o.customer_id
+JOIN order_items oi ON oi.order_id = o.order_id
+WHERE o.order_date &gt;= '2024-01-01'
+GROUP BY o.order_id, o.order_date, c.customer_name
+ORDER BY o.order_date DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Logical replication and streaming replication serve different purposes.</strong> Streaming replication is your high availability foundation — it gives you a hot standby that is seconds behind primary, ready for promotion if the primary fails. Logical replication is for use cases like selective table replication across major version upgrades, feeding data into downstream analytics systems, or replicating between different PostgreSQL versions during migration windows. Knowing which tool fits which problem saves considerable effort.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Schema design decisions are the hardest to reverse.</strong> Choosing between <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">JSONB</code> and normalized relational tables, between <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">UUID</code> and integer primary keys, between table inheritance and declarative partitioning — these decisions shape every query, every index, and every maintenance operation for the life of the application. Take the time to model data correctly at the start. Changing a primary key type or reorganizing a heavily-used table in production is expensive, disruptive, and risky.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">SQL Server Best Practices: The Lessons That Matter Most</h3>
+
+<p class="text-gray-300 leading-relaxed">SQL Server is a mature, feature-rich platform with its own set of recurring patterns that separate well-run environments from troubled ones.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Index maintenance is a scheduled discipline, not an occasional task.</strong> SQL Server indexes fragment over time as pages split during insert and update operations. Fragmentation above thirty percent typically warrants a full <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ALTER INDEX REBUILD</code>. Fragmentation between five and thirty percent can be addressed with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ALTER INDEX REORGANIZE</code>. Rebuilding indexes on large tables during peak hours without considering locking behavior is a common source of production incidents. Always evaluate whether an online rebuild (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">WITH (ONLINE = ON)</code>) is feasible, and schedule maintenance during low-traffic windows when offline rebuilds are necessary.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Identify fragmented indexes across a database
+SELECT
+    OBJECT_SCHEMA_NAME(ips.object_id) AS schema_name,
+    OBJECT_NAME(ips.object_id) AS table_name,
+    i.name AS index_name,
+    ips.index_type_desc,
+    ROUND(ips.avg_fragmentation_in_percent, 2) AS fragmentation_pct,
+    ips.page_count
+FROM sys.dm_db_index_physical_stats(
+    DB_ID(), NULL, NULL, NULL, 'LIMITED') ips
+JOIN sys.indexes i
+    ON i.object_id = ips.object_id
+    AND i.index_id = ips.index_id
+WHERE ips.avg_fragmentation_in_percent &gt; 5
+    AND ips.page_count &gt; 1000
+ORDER BY ips.avg_fragmentation_in_percent DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Statistics drive query plan quality.</strong> The query optimizer's ability to produce a good plan depends entirely on the accuracy of statistics. Auto-update statistics handles most workloads adequately, but tables with very large row counts or highly skewed data distributions sometimes require manual <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">UPDATE STATISTICS</code> with a higher sample rate, or filtered statistics on specific ranges. When a query suddenly starts performing poorly after a data load or after crossing a row count threshold, stale or misleading statistics are the first thing to investigate.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check statistics freshness for a specific table
+SELECT
+    s.name AS stats_name,
+    OBJECT_NAME(s.object_id) AS table_name,
+    sp.last_updated,
+    sp.rows AS total_rows,
+    sp.rows_sampled,
+    ROUND(100.0 * sp.rows_sampled / NULLIF(sp.rows, 0), 2) AS sample_pct,
+    sp.modification_counter AS modifications_since_last_update
+FROM sys.stats s
+CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
+WHERE OBJECT_NAME(s.object_id) = 'orders'
+ORDER BY sp.last_updated ASC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Blocking and deadlocks require proactive monitoring.</strong> SQL Server's locking model means that blocking chains are a normal occurrence under concurrent load — the question is whether they are short-lived and tolerable or extended and application-impacting. Extended Events sessions targeting the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">blocked_process_report</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">deadlock_graph</code> events give you the raw material to diagnose both problems. Long-running transactions, overly broad lock scopes, and missing indexes that force full scans to hold locks longer than necessary are the three most common root causes.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Tempdb contention is a scaling bottleneck that surprises teams.</strong> All user databases on an instance share a single tempdb. Heavy use of temporary tables, table variables, row versioning under snapshot isolation, and sort operations that spill to disk all put pressure on tempdb. The standard mitigations are configuring multiple tempdb data files equal to the number of logical processor cores (up to eight), placing tempdb on fast storage, and monitoring <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_db_task_space_usage</code> to identify sessions creating excessive tempdb consumption.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Always have a tested restore procedure, not just a backup job.</strong> Backup jobs that run successfully every night provide zero value if the restore has never been tested. Backup files can be corrupt. Backup chains can be broken. Restore procedures that look straightforward in documentation can have dependencies or steps that fail in practice. A quarterly restore drill to a non-production environment, verifying that the database comes up clean and that data is present and consistent, is the minimum standard for a production SQL Server environment.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Cross-Platform Principles: What Applies to Both Engines</h3>
+
+<p class="text-gray-300 leading-relaxed">Despite the significant architectural differences between PostgreSQL and SQL Server, the fundamental principles of good database management apply equally to both. These principles have appeared throughout every chapter of this book in different forms.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Design for the query, not just for storage.</strong> Every table design and indexing decision should be evaluated against the queries that will run against it. A perfectly normalized schema that requires five-way joins on every read is not necessarily better than a slightly denormalized schema that serves the application's access patterns efficiently. Understand your read/write ratio, your most frequent query shapes, and your latency requirements before finalizing any schema design.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Monitor at multiple layers simultaneously.</strong> Database performance problems almost never have a single cause. A slow query might be slow because of a missing index, or because of lock contention, or because the server is under memory pressure and reading from disk, or because the network between the application and database is saturated. Effective diagnosis requires looking at query execution plans, wait statistics, operating system resource utilization, and application behavior at the same time.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Identify the top wait events currently active in PostgreSQL
+SELECT
+    wait_event_type,
+    wait_event,
+    COUNT(*) AS session_count,
+    STRING_AGG(query, ' | ' ORDER BY query) AS sample_queries
+FROM pg_stat_activity
+WHERE wait_event IS NOT NULL
+    AND state = 'active'
+GROUP BY wait_event_type, wait_event
+ORDER BY session_count DESC
+LIMIT 20;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Identify current wait statistics across the instance
+SELECT TOP 20
+    wait_type,
+    waiting_tasks_count,
+    wait_time_ms,
+    max_wait_time_ms,
+    ROUND(100.0 * wait_time_ms / SUM(wait_time_ms) OVER (), 2) AS pct_of_total_waits
+FROM sys.dm_os_wait_stats
+WHERE wait_type NOT IN (
+    'SLEEP_TASK', 'BROKER_TO_FLUSH', 'BROKER_EVENTHANDLER',
+    'CHECKPOINT_QUEUE', 'DBMIRROR_EVENTS_QUEUE', 'SQLTRACE_BUFFER_FLUSH',
+    'CLR_AUTO_EVENT', 'DISPATCHER_QUEUE_SEMAPHORE', 'FT_IFTS_SCHEDULER_IDLE_WAIT',
+    'HADR_WORK_QUEUE', 'HADR_FILESTREAM_IOMGR_IOCOMPLETION',
+    'REQUEST_FOR_DEADLOCK_SEARCH', 'RESOURCE_QUEUE', 'SERVER_IDLE_CHECK',
+    'SLEEP_DBSTARTUP', 'SLEEP_DCOMSTARTUP', 'SLEEP_MASTERDBREADY',
+    'SLEEP_MASTERMDREADY', 'SLEEP_MASTERUPGRADED', 'SLEEP_MSDBSTARTUP',
+    'SLEEP_TEMPDBSTARTUP', 'SNI_HTTP_ACCEPT', 'SP_SERVER_DIAGNOSTICS_SLEEP',
+    'WAIT_XTP_OFFLINE_CKPT_NEW_LOG', 'XE_DISPATCHER_WAIT', 'XE_TIMER_EVENT'
+)
+ORDER BY wait_time_ms DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Every configuration change is a hypothesis.</strong> When you increase <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">work_mem</code> in PostgreSQL or change <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max degree of parallelism</code> in SQL Server, you are making a prediction that the change will improve conditions without creating new problems. Treat configuration changes the way a good engineer treats any experiment: make one change at a time, measure the result against a defined baseline, and be prepared to revert if the outcome is not what you expected. Changing multiple configuration parameters simultaneously makes it impossible to know which change caused which result.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Automate the routine, stay alert for the unusual.</strong> Backup jobs, index maintenance, statistics updates, log shipping — these should all be automated and monitored for failure. The DBA's attention should be reserved for anomalies that automation cannot handle: unusual growth patterns, query regressions after application deploys, hardware degradation signals, replication lag creeping upward. Build your monitoring alerts around deviations from normal baselines, not just absolute thresholds, because every environment has a different normal.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Building and Maintaining a Production-Grade Environment</h3>
+
+<p class="text-gray-300 leading-relaxed">Everything in this book ultimately serves one goal: building and maintaining database environments that are reliable, performant, and recoverable. This section brings together the operational practices that define what a production-grade environment actually looks like.</p>
+
+<p class="text-gray-300 leading-relaxed">A production-grade environment has documented baselines. You cannot know when something is wrong if you do not know what normal looks like. Baselines should cover query response time distributions, CPU and memory utilization patterns across the day and week, transaction rates, replication lag, backup durations, and tempdb or autovacuum worker activity. These baselines are the foundation of all meaningful alerting.</p>
+
+<p class="text-gray-300 leading-relaxed">A production-grade environment has tested recovery procedures. For PostgreSQL, this means knowing exactly how to execute a PITR (Point-in-Time Recovery) from your base backup and WAL archive, how long it takes, and what the first verification steps are after the database comes up. For SQL Server, this means knowing your full, differential, and transaction log backup chain, the order of restore operations, and how to verify database consistency with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">DBCC CHECKDB</code> after recovery.</p>
+
+<p class="text-gray-300 leading-relaxed">A production-grade environment has a change management process. Schema changes — even seemingly small ones like adding a column with a default value — can cause table rewrites, lock entire tables, or generate unexpected replication events. On PostgreSQL, adding a column with a non-null default triggers a table rewrite in versions before PostgreSQL 11. On SQL Server, adding a nullable column to a large table is metadata-only in modern versions, but adding a non-null column with no default still requires touching every row. Knowing these behaviors before executing changes prevents incidents.</p>
+
+<p class="text-gray-300 leading-relaxed">A production-grade environment separates read and write traffic where appropriate. PostgreSQL streaming replication standbys can serve read queries, distributing analytical or reporting load away from the primary. SQL Server Always On Availability Groups with readable secondaries serve the same purpose. The configuration of this separation, the application connection routing, and the consistency expectations of the read workload all need to be explicitly designed — they do not happen automatically.</p>
+
+<p class="text-gray-300 leading-relaxed">A production-grade environment treats security as a first-class operational concern, not an afterthought. Principle of least privilege for database accounts, network-level access controls, encrypted connections for all application traffic, audit logging for privileged operations, and regular review of who has access to what — these are not items to address after the system is stable. Security vulnerabilities discovered after a breach are far more expensive than security controls implemented during initial setup.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Key Takeaways</h3>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Master your platform's internals, not just its syntax.** Understanding how PostgreSQL's MVCC model affects vacuum requirements, or how SQL Server's locking architecture drives blocking patterns, allows you to make design and configuration decisions that prevent problems rather than patch them.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Execution plan fluency is non-negotiable.** Whether you are using `EXPLAIN ANALYZE` in PostgreSQL or the graphical execution plan in SQL Server Management Studio, the ability to read a query plan, identify the problematic nodes, and trace the problem back to a missing index, a statistics issue, or a schema design decision is the single most valuable skill a DBA can develop.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Backup and recovery is the floor, not the ceiling.** Every other optimization — indexing, tuning, replication, high availability — is worthless if you cannot recover your data after a failure. Tested, verified recovery procedures are the minimum standard for any production database environment.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Monitoring baselines and wait statistics tell you the truth.** Application performance problems that get blamed on the database are often caused by missing indexes, blocking chains, or resource saturation that is clearly visible in wait statistics and activity views. Build dashboards around these signals and you will diagnose problems in minutes rather than hours.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **The best DBA decisions are made before the problem occurs.** Schema design, index strategy, connection pooling architecture, partitioning, and high availability configuration are all far easier to implement correctly at the beginning than to retrofit onto a running production system under pressure. Invest time in design, test in conditions that resemble production, and document everything — those habits are what separate the DBAs who sleep soundly from the ones who get midnight pages.</li>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
