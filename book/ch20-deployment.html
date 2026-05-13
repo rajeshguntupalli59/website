@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 20: Deployment Models — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 20: Deployment Models. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 20 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 20: Deployment Models</h2>
+
+<p class="text-gray-300 leading-relaxed">Where your database runs is just as important as how it's configured. A brilliantly tuned PostgreSQL instance on undersized hardware, or a SQL Server deployment without proper high availability, will still fail the business. Deployment models define the physical and logical architecture of your database infrastructure — on-premises hardware, virtual machines, containers, cloud-managed services, and hybrid combinations of all of these. This chapter walks through each model, explains how PostgreSQL and SQL Server behave within it, and helps you make informed decisions about where and how to deploy databases for production workloads. By the end, you'll understand not just what the options are, but when and why experienced DBAs choose one over another.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">On-Premises Deployment: The Foundation</h3>
+
+<p class="text-gray-300 leading-relaxed">On-premises deployment means your database runs on hardware you own and operate, whether in a company data center or a co-location facility. It's the oldest model and still the most common in regulated industries, large enterprises, and organizations with significant capital investments in physical infrastructure.</p>
+
+<p class="text-gray-300 leading-relaxed">For both PostgreSQL and SQL Server, on-premises deployment gives you the highest degree of control. You choose the CPU, memory, storage subsystem, and network topology. You control the OS, kernel parameters, file system layout, and every configuration knob. Nothing happens to your environment without your knowledge and approval. That control comes with corresponding responsibility — hardware failures, OS patching, storage growth, and firmware updates all land on your team.</p>
+
+<p class="text-gray-300 leading-relaxed">When sizing on-premises hardware for PostgreSQL, memory is typically the most important resource. PostgreSQL relies heavily on shared buffers and OS page cache to keep hot data in memory. The general recommendation is to set <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">shared_buffers</code> to about 25% of total RAM, and ensure total RAM is large enough to hold your working set plus the OS overhead. Storage matters enormously — local NVMe SSDs dramatically outperform SAN-attached spinning disks for OLTP workloads, while SAN or NAS may still be appropriate for large data warehouses where sequential scan performance is acceptable.</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server on-premises has its own sizing considerations. Unlike PostgreSQL, which relies on the OS page cache as a second layer, SQL Server manages its own buffer pool directly and will aggressively claim available RAM up to the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max server memory</code> limit. Forgetting to set this limit is a classic mistake that starves the OS of memory on a shared machine.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check current memory-related configuration
+SELECT name, setting, unit, context
+FROM pg_settings
+WHERE name IN (
+    'shared_buffers',
+    'work_mem',
+    'maintenance_work_mem',
+    'effective_cache_size'
+);</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check current max server memory setting
+SELECT name, value_in_use, description
+FROM sys.configurations
+WHERE name IN (
+    'max server memory (MB)',
+    'min server memory (MB)',
+    'max worker threads'
+);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">One often-overlooked aspect of on-premises deployment is the storage layout. Both PostgreSQL and SQL Server benefit from separating data, transaction logs, and temporary workspace onto different physical devices. This isn't just about throughput — it's about I/O isolation. A long-running sort operation that hammers temporary storage shouldn't affect WAL write latency, which directly impacts transaction commit performance.</p>
+
+<p class="text-gray-300 leading-relaxed">For PostgreSQL, the WAL directory (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_wal</code>) should reside on its own fast volume, especially on high-write workloads. For SQL Server, transaction log files (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">.ldf</code>) should be on dedicated storage, and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">tempdb</code> files should sit on the fastest available storage, ideally local SSDs even in a SAN environment, because <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">tempdb</code> contention is one of the most common SQL Server performance problems in production.</p>
+
+<p class="text-gray-300 leading-relaxed">Physical hardware also gives you predictable, consistent performance — no noisy neighbor problems, no shared hypervisor overhead, no network-based storage latency surprises. For latency-sensitive applications — financial transaction processing, real-time trading systems, high-frequency manufacturing control systems — on-premises dedicated hardware often remains the right choice even when cloud options exist.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Virtualized Environments: Flexibility with Tradeoffs</h3>
+
+<p class="text-gray-300 leading-relaxed">Virtualization has become the default deployment model for databases in most organizations, even on-premises. VMware vSphere, Microsoft Hyper-V, and KVM-based platforms allow multiple database VMs to share physical hardware, with resource boundaries defined in software. This flexibility is valuable — you can move VMs, resize resources, and snapshot environments without touching physical hardware. But virtualization introduces behaviors that every DBA needs to understand.</p>
+
+<p class="text-gray-300 leading-relaxed">The most significant issue is CPU scheduling. A physical machine with 32 cores can run 32 threads simultaneously. A hypervisor running multiple VMs on that same hardware may allocate those 32 cores to 8 VMs, each believing it has 8 dedicated cores. In reality, all VMs compete for physical CPU time through the hypervisor scheduler. When your database VM is ready to run but physical cores are busy serving other VMs, it experiences CPU ready time — time spent waiting to be scheduled. High CPU ready time directly translates to query latency, particularly for short OLTP queries where even a few milliseconds of scheduling delay is noticeable.</p>
+
+<p class="text-gray-300 leading-relaxed">Memory ballooning and transparent page sharing are similar hazards. Hypervisors may reclaim memory from your database VM under pressure, forcing the database to evict buffer pool pages. For PostgreSQL this means more disk reads. For SQL Server this triggers a warning in the error log and degrades buffer pool hit ratios.</p>
+
+<p class="text-gray-300 leading-relaxed">Storage in virtualized environments typically passes through additional layers. Virtual disks (VMDK files on VMFS, or VHDs/VHDXs on Hyper-V) add overhead compared to bare-metal block devices. Storage vMotion and snapshot operations can impact disk I/O unexpectedly. The best practice for performance-critical database VMs is to use raw device mapping (RDM on VMware) or pass-through disk attachments, bypassing the virtual disk layer entirely.</p>
+
+<p class="text-gray-300 leading-relaxed">Despite these challenges, virtualized databases work well in practice when the environment is properly configured. Reserve CPU and memory resources for database VMs rather than leaving them subject to dynamic contention. Disable memory ballooning for database guests. Ensure VM-level I/O limits are not inadvertently throttling database storage throughput.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check for evidence of I/O performance pressure
+SELECT schemaname, tablename,
+       heap_blks_read,
+       heap_blks_hit,
+       round(
+           heap_blks_hit::numeric /
+           NULLIF(heap_blks_hit + heap_blks_read, 0) * 100, 2
+       ) AS buffer_hit_ratio
+FROM pg_statio_user_tables
+ORDER BY heap_blks_read DESC
+LIMIT 20;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check buffer pool hit ratio and I/O stalls
+SELECT
+    DB_NAME(vfs.database_id) AS database_name,
+    mf.physical_name,
+    vfs.io_stall_read_ms,
+    vfs.io_stall_write_ms,
+    vfs.num_of_reads,
+    vfs.num_of_writes,
+    CASE WHEN vfs.num_of_reads &gt; 0
+         THEN vfs.io_stall_read_ms / vfs.num_of_reads
+         ELSE 0 END AS avg_read_ms,
+    CASE WHEN vfs.num_of_writes &gt; 0
+         THEN vfs.io_stall_write_ms / vfs.num_of_writes
+         ELSE 0 END AS avg_write_ms
+FROM sys.dm_io_virtual_file_stats(NULL, NULL) vfs
+JOIN sys.master_files mf
+    ON vfs.database_id = mf.database_id
+    AND vfs.file_id = mf.file_id
+ORDER BY vfs.io_stall_read_ms DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Hyper-V deserves specific mention for SQL Server deployments. Microsoft has optimized the SQL Server / Hyper-V stack over many years, and there are storage enlightenments (direct block device access through the virtual machine bus) that reduce overhead for SQL Server VMs running on Windows Server Hyper-V hosts. This tight integration means the SQL Server on Hyper-V combination often performs closer to bare metal than a comparable SQL Server on VMware configuration, though both can be production-grade with proper tuning.</p>
+
+<p class="text-gray-300 leading-relaxed">One deployment pattern that works well in virtualized environments is using dedicated physical hosts for your largest or most critical database VMs. This gives you VM management flexibility (live migration, centralized backups, DR orchestration through VM replication) while avoiding the resource contention of a shared host. The database gets guaranteed physical resources, and you still benefit from the operational tooling that virtualization provides.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Cloud-Managed Database Services: Speed at the Cost of Control</h3>
+
+<p class="text-gray-300 leading-relaxed">Cloud-managed database services — Amazon RDS, Azure SQL Database, Google Cloud SQL, and their equivalents — represent a fundamentally different deployment philosophy. The cloud provider manages the underlying hardware, OS, storage provisioning, high availability, and backups. You get a database endpoint and the configuration options the provider chooses to expose. This dramatically reduces operational overhead, particularly for teams that don't have dedicated DBA staff.</p>
+
+<p class="text-gray-300 leading-relaxed">Amazon RDS for PostgreSQL and Azure Database for PostgreSQL are not vanilla PostgreSQL — they're PostgreSQL running inside a managed abstraction. You cannot access the underlying OS. You cannot modify <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_hba.conf</code> directly. You cannot use <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">COPY</code> with local filesystem paths. You cannot install arbitrary extensions. The managed environment constrains what you can do, and understanding those constraints before committing to a managed service is essential.</p>
+
+<p class="text-gray-300 leading-relaxed">Azure SQL Database is also not SQL Server — it's a cloud-native database service that shares SQL Server's query engine but behaves differently in many operational dimensions. There is no SQL Server Agent in Azure SQL Database's base tier (you use Elastic Jobs instead). Linked server configurations work differently. Database mail, certain DBCC commands, and some system stored procedures are unavailable or function differently. Amazon RDS for SQL Server is closer to a full SQL Server installation but still restricts <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sysadmin</code>-level operations and direct OS access.</p>
+
+<p class="text-gray-300 leading-relaxed">That said, managed services handle genuinely hard operational problems well. Point-in-time recovery, automated backups with configurable retention, Multi-AZ high availability, automated minor version patching, and built-in monitoring are all provided without you building any of that infrastructure yourself. For a startup or a development team building a new application, a managed service lets you focus on the application instead of the database platform.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- On RDS PostgreSQL, check available extensions
+SELECT name, default_version, installed_version, comment
+FROM pg_available_extensions
+ORDER BY name;
+
+-- Check parameter group settings via pg_settings
+SELECT name, setting, source, context
+FROM pg_settings
+WHERE source = 'configuration file'
+ORDER BY name;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- On Azure SQL Database, check available features and service tier
+SELECT
+    DATABASEPROPERTYEX(DB_NAME(), 'Edition') AS edition,
+    DATABASEPROPERTYEX(DB_NAME(), 'ServiceObjective') AS service_objective,
+    DATABASEPROPERTYEX(DB_NAME(), 'MaxSizeInBytes') AS max_size_bytes;
+
+-- Check which features are supported in current environment
+SELECT feature_name, is_enabled
+FROM sys.dm_db_persisted_sku_features;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Performance in managed services is tied to the instance class or service tier you select. RDS PostgreSQL and RDS SQL Server are sized by instance type (db.t3.medium, db.r6g.4xlarge, etc.), and storage IOPS are either included or purchasable separately depending on the storage type. Azure SQL Database uses DTUs or vCores, with corresponding IOPS limits tied to the tier. Understanding these limits matters because a query that runs fine in development on a large instance may hit I/O or CPU throttling in production on an undersized tier.</p>
+
+<p class="text-gray-300 leading-relaxed">Aurora PostgreSQL and Aurora SQL Server (via RDS compatibility) deserve mention as hybrid managed offerings. Aurora disaggregates storage from compute, using a distributed storage engine with six-way replication across availability zones. This fundamentally changes the HA model — a primary failure results in near-instantaneous failover because the new primary immediately attaches to the same shared storage volume. For PostgreSQL workloads that need strong availability SLAs without managing replication manually, Aurora PostgreSQL is a compelling option. The tradeoff is that Aurora's storage engine, while PostgreSQL-compatible, has its own performance characteristics and some behavioral differences from community PostgreSQL.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Containerized Deployments: PostgreSQL and SQL Server in Docker and Kubernetes</h3>
+
+<p class="text-gray-300 leading-relaxed">Running databases in containers is no longer experimental — it's a production deployment pattern, particularly for PostgreSQL. Containers provide environment consistency, fast startup, easy version upgrades, and alignment with modern application deployment tooling. But containers introduce a different set of challenges for stateful workloads like databases, and understanding those challenges determines whether containerization is appropriate for a given workload.</p>
+
+<p class="text-gray-300 leading-relaxed">The core tension is that containers are designed for ephemeral, stateless workloads, while databases are the definition of stateful. The database's value is in the data it holds, and that data must survive container restarts, rescheduling, and node failures. This is handled through persistent volumes — external storage that outlives the container and can be remounted when the container moves to a different node. On Kubernetes, PersistentVolumeClaims (PVCs) backed by local SSDs or cloud block storage are the standard mechanism.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL in containers is straightforward because it's a single-process server that reads its data directory from a configurable path. The official <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">postgres</code> Docker image is well-maintained, environment variables configure initialization, and the data directory maps cleanly to a persistent volume. For development, local testing, and CI/CD pipeline databases, containerized PostgreSQL is excellent. For production, the question is whether Kubernetes storage performance matches what you need.</p>
+
+<p class="text-gray-300 leading-relaxed">Local persistent volumes on Kubernetes — where the storage is physically attached NVMe on the node — deliver excellent performance, often close to bare-metal. The catch is that if the node fails, the database must wait for node recovery or fail over to a replica on a different node. Storage solutions like Portworx, Longhorn, or cloud-provider managed storage (AWS EBS, Azure Managed Disks) add redundancy at the cost of some latency.</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server has supported Docker containers since SQL Server 2017, and Microsoft maintains official Linux-based container images for SQL Server. Running SQL Server in a container is operationally similar to PostgreSQL — mount a persistent volume to the data directory, configure via environment variables or startup scripts, and manage the lifecycle through container orchestration. SQL Server containers on Kubernetes are used in production, particularly in development/test environments and for SQL Server instances that need fast provisioning and deprovisioning.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- After starting a PostgreSQL container, verify data directory and configuration
+SHOW data_directory;
+SHOW config_file;
+
+-- Check that the data directory is on the expected persistent volume path
+SELECT pg_postmaster_start_time(),
+       version(),
+       pg_size_pretty(pg_database_size(current_database())) AS db_size;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- After starting a SQL Server container, verify instance configuration
+SELECT @@SERVERNAME AS server_name,
+       @@VERSION AS version,
+       SERVERPROPERTY('InstanceDefaultDataPath') AS data_path,
+       SERVERPROPERTY('InstanceDefaultLogPath') AS log_path;
+
+-- Check SQL Server error log location
+EXEC xp_readerrorlog 0, 1, N'Logging SQL Server messages';</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Kubernetes operators for databases add a higher-level abstraction over raw container deployment. The Crunchy Data PGO (PostgreSQL Operator) and Zalando's postgres-operator for PostgreSQL, and the SQL Server Operator for Kubernetes (from Microsoft), all provide CRD-based (Custom Resource Definition) declarations for PostgreSQL and SQL Server clusters. You define the desired state — primary + replicas, backup schedules, resource limits, connection pooling — and the operator reconciles the running environment to match that state. This brings the Kubernetes model of declarative infrastructure to database management.</p>
+
+<p class="text-gray-300 leading-relaxed">The resource limits conversation is one that trips up many teams new to database containers. Setting CPU and memory limits on a database container seems like good Kubernetes hygiene, but if the memory limit is too low, PostgreSQL's shared buffers plus per-connection work_mem allocations can push the container over its limit, triggering an OOM kill. PostgreSQL doesn't handle OOM kills gracefully — the instance disappears and must restart, replaying WAL from the last checkpoint. Set memory requests and limits with the full knowledge of how PostgreSQL allocates memory, and consider setting a memory limit somewhat higher than the expected working set to provide headroom.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Hybrid and Multi-Cloud Architectures: Managing Complexity at Scale</h3>
+
+<p class="text-gray-300 leading-relaxed">Real enterprise environments rarely fit neatly into a single deployment model. Organizations frequently run critical production databases on-premises for compliance or latency reasons while using cloud-managed services for development, analytics, or disaster recovery. Some workloads span multiple cloud providers. This hybrid reality creates operational complexity that DBAs must navigate deliberately.</p>
+
+<p class="text-gray-300 leading-relaxed">The fundamental challenge in hybrid architectures is data movement and consistency. If your primary PostgreSQL cluster runs on-premises and your disaster recovery replica runs on AWS RDS, you need logical replication between them, because physical replication (streaming replication) doesn't work across different storage architectures. Logical replication in PostgreSQL replicates data at the row level, crossing version and environment boundaries, but it has limitations — DDL changes are not replicated, sequences don't replicate their current values, and large object operations don't replicate. These gaps require operational procedures to compensate.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Set up logical replication publication on the on-premises primary
+-- (This runs on the source — on-premises PostgreSQL)
+CREATE PUBLICATION prod_to_cloud_pub
+FOR ALL TABLES
+WITH (publish = 'insert, update, delete');
+
+-- On the cloud replica, create the subscription
+-- (This runs on the destination — RDS PostgreSQL)
+CREATE SUBSCRIPTION prod_to_cloud_sub
+CONNECTION 'host=onprem-primary.internal port=5432
+            dbname=appdb user=replicator password=secret
+            sslmode=require'
+PUBLICATION prod_to_cloud_pub;
+
+-- Monitor replication lag on the source
+SELECT sub_name,
+       sent_lsn,
+       write_lsn,
+       flush_lsn,
+       replay_lsn,
+       (sent_lsn - replay_lsn) AS replication_lag_bytes
+FROM pg_stat_replication;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check replication or AG synchronization status in a hybrid setup
+-- On the primary replica
+SELECT
+    ag.name AS ag_name,
+    ar.replica_server_name,
+    ars.role_desc,
+    ars.synchronization_health_desc,
+    ars.connected_state_desc,
+    drs.synchronization_state_desc,
+    drs.log_send_queue_size,
+    drs.redo_queue_size
+FROM sys.availability_groups ag
+JOIN sys.availability_replicas ar
+    ON ag.group_id = ar.group_id
+JOIN sys.dm_hadr_availability_replica_states ars
+    ON ar.replica_id = ars.replica_id
+LEFT JOIN sys.dm_hadr_database_replica_states drs
+    ON ar.replica_id = drs.replica_id
+ORDER BY ag.name, ar.replica_server_name;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Network latency between on-premises and cloud is the most persistent challenge in hybrid deployments. WAL shipping and logical replication both tolerate latency better than synchronous streaming replication, but any replication-based architecture needs reliable, low-jitter connectivity between environments. AWS Direct Connect, Azure ExpressRoute, and Google Cloud Dedicated Interconnect provide private network paths from your data center to the cloud provider with predictable latency and bandwidth guarantees. Using public internet for database replication paths is possible but introduces variability that will surface as replication lag spikes at unpredictable times.</p>
+
+<p class="text-gray-300 leading-relaxed">Multi-cloud architectures — intentionally distributing workloads across AWS, Azure, and GCP — are rare for databases because they add complexity with limited practical benefit. Applications benefit from multi-cloud portability through abstraction layers, but databases need tight coupling between the application and its data store. The cases where multi-cloud database deployments make sense are specific: a company that has acquired another organization with a different cloud footprint, regulatory requirements that mandate geographic separation across providers, or a deliberate strategy to avoid vendor lock-in for contract negotiation leverage.</p>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server in hybrid environments, the combination of on-premises SQL Server with Azure SQL Managed Instance deserves attention. Azure SQL Managed Instance is nearly fully compatible with on-premises SQL Server — it supports SQL Server Agent, Database Mail, linked servers, cross-database queries, CLR assemblies, and most features that Azure SQL Database excludes. Managed Instance uses a distributed network injection model that places it inside your Azure Virtual Network, making it behave like an on-premises instance from a connectivity standpoint. This makes it the most natural migration target for existing on-premises SQL Server workloads that need cloud placement without extensive application changes.</p>
+
+<p class="text-gray-300 leading-relaxed">Governance in hybrid environments is where DBAs most commonly get caught out. Backup policies, encryption standards, access control models, and audit logging need to be consistent across all deployment locations. A database that is compliant on-premises but deployed to a cloud environment without equivalent encryption at rest or equivalent access logging creates a compliance gap that may not surface until an audit. Treat hybrid environments as a single unified system from a governance perspective, even though the operational tooling for each deployment location is different.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Choosing a Deployment Model: Operational Realities and Decision Criteria</h3>
+
+<p class="text-gray-300 leading-relaxed">Choosing a deployment model is not a purely technical decision. Budget, team skills, compliance requirements, availability SLAs, and organizational risk tolerance all feed into the decision. Technical merit alone doesn't determine the right answer — a deployment that works perfectly on paper but that your team can't operate confidently in production is not the right choice.</p>
+
+<p class="text-gray-300 leading-relaxed">Start with your availability requirements. If your application requires 99.99% uptime (about 52 minutes of downtime per year), you need an architecture with automatic failover, whether that's on-premises PostgreSQL streaming replication with a tool like Patroni managing failover, SQL Server Always On Availability Groups, Aurora PostgreSQL, or Azure SQL Database's built-in HA. A standalone on-premises instance with manual failover procedures cannot reliably hit 99.99% without extraordinarily disciplined operations.</p>
+
+<p class="text-gray-300 leading-relaxed">Consider your data volume and growth trajectory. Managed cloud services scale storage and compute independently in ways that on-premises hardware cannot. If you're building a product where data volume is unpredictable, the elasticity of cloud deployments has real operational value — you're not right-sizing hardware for a five-year growth horizon and either over-paying upfront or scrambling for emergency hardware when growth accelerates faster than planned.</p>
+
+<p class="text-gray-300 leading-relaxed">Compliance and data residency requirements constrain your choices more than any technical factor. Industries subject to HIPAA, PCI-DSS, SOC 2, or GDPR often have explicit requirements about where data can reside, who can access the underlying infrastructure, and what audit logging must capture. Cloud providers have made significant progress in meeting these requirements — AWS and Azure both offer HIPAA-eligible managed services, PCI-DSS compliant environments, and SOC 2 certified infrastructure. But compliance work in cloud environments is a partnership: the provider secures the infrastructure, you secure the data and application layer. Ensure your organization's compliance team validates the shared responsibility model before committing to a deployment platform for regulated workloads.</p>
+
+<p class="text-gray-300 leading-relaxed">Team capability matters practically. A small engineering team that has been running VMware for years with a well-documented runbook for PostgreSQL virtual machines will operate that environment more reliably than a Kubernetes-based deployment they're learning as they go. The ideal deployment architecture that exceeds your team's operational capability is worse in production than a simpler architecture that your team thoroughly understands. Invest in building expertise alongside infrastructure decisions, but don't bet production stability on a learning curve.</p>
+
+<p class="text-gray-300 leading-relaxed">The total cost calculation is more nuanced than most organizations initially model. On-premises hardware has upfront capital costs but predictable ongoing costs once amortized. Cloud services have no capital cost but variable ongoing operational expenses that can grow unexpectedly with data volume and egress traffic. The "cloud is cheaper" assumption needs verification against your specific workload — for high-throughput, high-storage databases with consistent load, reserved instances and committed use discounts help, but a large on-premises deployment often costs less per query at scale. Cloud deployments win on agility, reduced operational burden, and flexibility. On-premises deployments win on cost predictability at scale and control. A rigorous three-year TCO (total cost of ownership) analysis incorporating all factors — hardware, licensing, personnel, power, facilities, and opportunity cost — is worth completing before making major deployment architecture commitments.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Key Takeaways</h3>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **On-premises deployment offers maximum control and consistent performance, but requires your team to own every layer of the infrastructure — hardware, OS, storage, and database — which demands significant operational capability and investment.**</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Virtualized environments introduce CPU scheduling, memory ballooning, and storage latency challenges that directly affect database performance; mitigate these by reserving resources for database VMs and separating data, log, and temp files onto dedicated storage.**</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Cloud-managed services (RDS, Azure SQL Database, Aurora) reduce operational overhead significantly but impose real constraints on configuration, extension availability, and OS-level access — validate those constraints against your workload requirements before committing.**</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Containers and Kubernetes work well for database deployments when persistent volume performance is sufficient and memory/resource limits are set with full awareness of database memory allocation behavior; operators like Crunchy PGO and the SQL Server Operator reduce the complexity of managing database clusters in Kubernetes.**</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Hybrid and multi-cloud architectures require deliberate network planning, consistent governance across environments, and a clear</li>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
