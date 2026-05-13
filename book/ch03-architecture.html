@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 3: System Architecture Overview — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 3: System Architecture Overview. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 3 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 3: System Architecture Overview</h2>
+
+<p class="text-gray-300 leading-relaxed">Understanding how a database engine works internally is not an academic exercise — it is the foundation of everything a DBA does. When you tune a slow query, diagnose a memory problem, or plan for high availability, you are reasoning about the internal components of the database system. This chapter walks through the architecture of both PostgreSQL and SQL Server, covering how each engine receives queries, processes them, manages memory, writes data to disk, and handles concurrency. By the end, you will see both systems clearly enough to compare them and know exactly which internal component to investigate when something goes wrong in production.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">How Each Engine Receives and Processes a Query</h3>
+
+<p class="text-gray-300 leading-relaxed">Every database interaction begins the same way: a client sends a request, and the engine has to figure out what the client wants, whether it is valid, what the most efficient execution plan looks like, and how to return a result. The path a query takes through the engine — from raw text to result rows — is called the query processing pipeline, and understanding it gives you a mental model for diagnosing almost any performance problem.</p>
+
+<p class="text-gray-300 leading-relaxed">In <strong class="text-white">PostgreSQL</strong>, the process begins with the <strong class="text-white">postmaster</strong>, the parent process that listens on the network port (typically 5432) and spawns a dedicated backend process for each incoming client connection. This is a process-per-connection model. Each backend is an independent operating system process, which means a crash in one backend cannot corrupt the memory of another. The backend receives the query string and passes it through four stages: parsing, rewriting, planning, and execution.</p>
+
+<p class="text-gray-300 leading-relaxed">The <strong class="text-white">parser</strong> converts the SQL text into an internal tree structure called a parse tree. The <strong class="text-white">rewriter</strong> applies any rewrite rules — most commonly, it expands views by substituting their definition into the query. The <strong class="text-white">planner</strong> (also called the optimizer) takes the rewritten query tree and generates one or more candidate execution plans, assigns cost estimates to each using statistics from <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_statistic</code>, and selects the cheapest one. Finally, the <strong class="text-white">executor</strong> runs the chosen plan and streams rows back to the client.</p>
+
+<p class="text-gray-300 leading-relaxed">In <strong class="text-white">SQL Server</strong>, the equivalent process runs inside a single, monolithic service (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sqlservr.exe</code>) using a thread pool model rather than separate OS processes. When a client connects via TDS (Tabular Data Stream protocol), a worker thread is assigned. The query text goes through the <strong class="text-white">parser</strong>, which produces a parse tree, then into the <strong class="text-white">algebrizer</strong> (the SQL Server equivalent of PostgreSQL's analyzer), which resolves object names and data types. The result is a query tree passed to the <strong class="text-white">query optimizer</strong>, which generates and evaluates execution plans using statistics from <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.stats</code>. A compiled plan is stored in the <strong class="text-white">plan cache</strong> (part of the Buffer Pool). On subsequent executions of the same parameterized query, the engine looks up the cached plan to avoid recompilation overhead.</p>
+
+<p class="text-gray-300 leading-relaxed">A key practical difference emerges here: PostgreSQL historically compiled a new plan for each execution of an ad-hoc query (though prepared statements cache plans), while SQL Server aggressively caches execution plans. This makes plan cache management an important SQL Server DBA task that has no direct equivalent in PostgreSQL day-to-day operations.</p>
+
+<p class="text-gray-300 leading-relaxed">You can observe the query pipeline directly using system tools. To see active queries currently running through the execution engine:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Show active queries with runtime and wait event information
+SELECT
+    pid,
+    usename,
+    application_name,
+    state,
+    wait_event_type,
+    wait_event,
+    now() - query_start AS duration,
+    query
+FROM pg_stat_activity
+WHERE state != 'idle'
+ORDER BY duration DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Show active queries with wait type and elapsed time
+SELECT
+    r.session_id,
+    r.status,
+    r.wait_type,
+    r.wait_time,
+    r.elapsed_time / 1000.0 AS elapsed_seconds,
+    r.cpu_time,
+    r.logical_reads,
+    t.text AS query_text
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE r.session_id &gt; 50  -- filter out system sessions
+ORDER BY r.elapsed_time DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Memory Architecture: Where Data Lives Before It Hits Disk</h3>
+
+<p class="text-gray-300 leading-relaxed">Memory management is one of the most consequential aspects of database architecture. A database engine that reads every row from disk on every query would be unusably slow. The entire purpose of memory management in a DBMS is to keep frequently accessed data in RAM, serve reads from memory rather than disk, and stage writes in memory before flushing them to durable storage efficiently.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL</strong> divides memory into two broad categories: shared memory and local (per-backend) memory.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Shared memory</strong> is allocated once at startup and shared across all backend processes. The most important component is the <strong class="text-white">shared buffer pool</strong>, controlled by the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">shared_buffers</code> parameter (default: 128MB, but production systems typically set this to 25–40% of total RAM). The shared buffer pool holds copies of data pages (each page is 8KB by default) read from disk. When a backend needs a data page, it first checks the shared buffer pool. A hit means the page is served from RAM; a miss means PostgreSQL must read the page from the operating system page cache or disk and bring it into shared buffers.</p>
+
+<p class="text-gray-300 leading-relaxed">This is where PostgreSQL's architecture introduces an important nuance: PostgreSQL relies heavily on the <strong class="text-white">OS page cache</strong> as a second level of caching. A page evicted from shared buffers may still be in the OS cache, making its retrieval faster than a true disk read. This double-buffering behavior is a design trade-off — it means PostgreSQL does not need to implement its own complex cache eviction logic for all cases, but it also means memory usage is harder to predict and control precisely compared to SQL Server.</p>
+
+<p class="text-gray-300 leading-relaxed">Per-backend local memory includes structures like <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">work_mem</code> (used for sorts, hash joins, and hash aggregations — each sort or hash operation in a query plan can use up to <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">work_mem</code> bytes), <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">maintenance_work_mem</code> (used by VACUUM, CREATE INDEX, and CLUSTER), and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">temp_buffers</code> (for temporary tables).</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server</strong> uses a unified memory pool called the <strong class="text-white">Buffer Pool</strong>, managed by a component called the <strong class="text-white">Buffer Manager</strong>. Unlike PostgreSQL's dual-layer approach, SQL Server manages its own cache directly, bypassing OS-level file caching for data files by using direct I/O (on Linux) or by competing with the OS cache carefully (on Windows). The Buffer Pool contains data pages (8KB, matching PostgreSQL's default), index pages, and execution context memory. SQL Server dynamically adjusts how much memory it allocates to the Buffer Pool based on system demand, bounded by the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max server memory</code> configuration.</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server also maintains a separate <strong class="text-white">procedure cache</strong> (plan cache) within the Buffer Pool for compiled execution plans, and a <strong class="text-white">log cache</strong> for transaction log records before they are flushed to disk.</p>
+
+<p class="text-gray-300 leading-relaxed">A second important SQL Server memory area is <strong class="text-white">In-Memory OLTP</strong> (formerly Hekaton), introduced in SQL Server 2014. This subsystem manages memory-optimized tables entirely outside the Buffer Pool, in a separate region, using lock-free data structures. This is a fundamentally different architecture from the standard row-store engine.</p>
+
+<p class="text-gray-300 leading-relaxed">One thing every DBA should be able to do is quickly assess memory pressure. The following queries help identify whether the buffer pool is under strain:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check shared buffer hit ratio (high hit ratio means effective caching)
+SELECT
+    sum(heap_blks_read)  AS heap_read,
+    sum(heap_blks_hit)   AS heap_hit,
+    round(
+        sum(heap_blks_hit)::numeric /
+        nullif(sum(heap_blks_hit) + sum(heap_blks_read), 0) * 100,
+        2
+    ) AS buffer_hit_ratio_pct
+FROM pg_statio_user_tables;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check buffer pool hit ratio via DMV
+SELECT
+    physical_memory_in_use_kb / 1024.0       AS memory_used_mb,
+    page_fault_count,
+    memory_utilization_percentage
+FROM sys.dm_os_process_memory;
+
+-- Also check buffer cache hit ratio via performance counters
+SELECT
+    object_name,
+    counter_name,
+    cntr_value
+FROM sys.dm_os_performance_counters
+WHERE counter_name = 'Buffer cache hit ratio'
+   OR counter_name = 'Buffer cache hit ratio base';</code></pre>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Storage Architecture: How Data Is Organized on Disk</h3>
+
+<p class="text-gray-300 leading-relaxed">Understanding physical storage organization helps you make decisions about tablespace placement, file layout, I/O tuning, and capacity planning. It also explains why certain operations — like sequential scans versus random I/O — have the performance characteristics they do.</p>
+
+<p class="text-gray-300 leading-relaxed">In <strong class="text-white">PostgreSQL</strong>, a database cluster (a single PostgreSQL installation) stores all its data under the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">PGDATA</code> directory. Each database within a cluster has its own subdirectory under <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">PGDATA/base/</code>, identified by its OID (object identifier). Each table and index is stored as one or more files in that directory, also named by OID. By default, a relation file is capped at 1GB; once it reaches that size, PostgreSQL creates a numbered continuation file (e.g., <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">16384</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">16384.1</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">16384.2</code>).</p>
+
+<p class="text-gray-300 leading-relaxed">The fundamental storage unit is the <strong class="text-white">page</strong> (8KB by default). Every heap file (table) and index file is a sequence of pages. Each page has a header, an array of item pointers (called the line pointer array), and rows stored from the bottom of the page upward. This layout means PostgreSQL can locate a specific row using a physical address called a <strong class="text-white">tuple ID (ctid)</strong>, which encodes the page number and the item pointer offset within that page.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL also supports <strong class="text-white">tablespaces</strong>, which allow specific tables or indexes to be stored on different mount points or storage volumes — useful for placing hot indexes on NVMe storage and cold archive tables on slower, cheaper disks.</p>
+
+<p class="text-gray-300 leading-relaxed">The <strong class="text-white">Write-Ahead Log (WAL)</strong> is stored separately under <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">PGDATA/pg_wal/</code>. Every change to data pages is first written as a WAL record before the data page itself is modified on disk. This is the mechanism that guarantees durability — if the system crashes after a WAL record is written but before the data page is flushed, PostgreSQL can replay the WAL record during recovery to reconstruct the change.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server</strong> organizes storage around <strong class="text-white">database files</strong>. A database consists of at least one data file (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">.mdf</code>, the primary data file) and one transaction log file (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">.ldf</code>). Additional data files can be added (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">.ndf</code>, secondary data files), and data files can be grouped into <strong class="text-white">filegroups</strong> to control where objects land. The default filegroup is <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">PRIMARY</code>; DBAs typically create additional filegroups for large tables, read-only data, or in-memory tables.</p>
+
+<p class="text-gray-300 leading-relaxed">The fundamental storage unit in SQL Server is also an 8KB <strong class="text-white">page</strong>. Pages are grouped into <strong class="text-white">extents</strong> (8 contiguous pages = 64KB). A newly created small table begins with a <strong class="text-white">mixed extent</strong> (shared with other objects), but once it grows past eight pages, it transitions to a <strong class="text-white">uniform extent</strong> (dedicated to a single object). This extent management is tracked in system pages called <strong class="text-white">IAM pages</strong> (Index Allocation Map), <strong class="text-white">GAM</strong> (Global Allocation Map), and <strong class="text-white">SGAM</strong> (Shared Global Allocation Map).</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server's equivalent of PostgreSQL's WAL is the <strong class="text-white">transaction log</strong>. Every database has a transaction log that records all changes before they are applied to data pages. Log records are written sequentially, and SQL Server uses a <strong class="text-white">log sequence number (LSN)</strong> to track position in the log — directly analogous to PostgreSQL's LSN in the WAL.</p>
+
+<p class="text-gray-300 leading-relaxed">One significant architectural difference worth understanding is how each system handles table storage by default. PostgreSQL stores all tables as <strong class="text-white">heap files</strong> — rows are stored in the order they are inserted (unless later reorganized by CLUSTER). SQL Server, by contrast, stores tables either as a <strong class="text-white">heap</strong> (when no clustered index exists) or as a <strong class="text-white">clustered index</strong>, where the table's row data is physically sorted by the clustered key and stored within the B-tree index structure. Most SQL Server tables in production are clustered indexes, making the choice of clustering key a design decision with major performance implications — a concern that simply does not arise in the same way in PostgreSQL.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Concurrency Control: Transactions, Locking, and MVCC</h3>
+
+<p class="text-gray-300 leading-relaxed">A production database is never accessed by just one session at a time. Dozens, hundreds, or thousands of concurrent transactions may be reading and modifying data simultaneously. Concurrency control is the mechanism that keeps these transactions from interfering with each other in ways that produce incorrect results. Both PostgreSQL and SQL Server support the ACID properties (Atomicity, Consistency, Isolation, Durability), but they use fundamentally different approaches to achieve isolation.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL</strong> uses <strong class="text-white">Multi-Version Concurrency Control (MVCC)</strong> as its primary isolation mechanism. The core idea is that instead of locking a row when a transaction reads it, PostgreSQL maintains multiple versions of each row. When a row is updated, the old version is not overwritten; instead, a new version is written, and the old version is marked as expired. Each transaction sees a consistent snapshot of the data as it existed at the start of the transaction (for the default <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">READ COMMITTED</code> level) or at the start of the statement. This means <strong class="text-white">readers never block writers, and writers never block readers</strong> — a property that makes PostgreSQL excellent for mixed workloads.</p>
+
+<p class="text-gray-300 leading-relaxed">Each row version in PostgreSQL carries two hidden system columns: <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">xmin</code> (the transaction ID that created this version) and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">xmax</code> (the transaction ID that deleted or superseded this version, or 0 if the row is still current). The visibility of a row to a given transaction is determined by comparing these values against the transaction's snapshot.</p>
+
+<p class="text-gray-300 leading-relaxed">The downside of MVCC is that dead row versions accumulate over time, consuming disk space and degrading performance. This is why <strong class="text-white">VACUUM</strong> exists — it is not a cosmetic operation but an architectural necessity, responsible for reclaiming space occupied by dead tuples and updating the visibility map so that index-only scans remain efficient.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server</strong> offers a different model. By default (without enabling snapshot isolation), SQL Server uses a <strong class="text-white">pessimistic locking</strong> approach: read operations acquire shared locks, write operations acquire exclusive locks, and these locks are held for varying durations depending on the isolation level. Under <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">READ COMMITTED</code> (the default), shared locks are acquired and released row by row during a scan, which can lead to readers blocking on writers and vice versa.</p>
+
+<p class="text-gray-300 leading-relaxed">However, SQL Server also offers an MVCC-style option called <strong class="text-white">Read Committed Snapshot Isolation (RCSI)</strong>. When enabled at the database level, SQL Server stores row versions in a special area of <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">tempdb</code> called the <strong class="text-white">version store</strong>. Readers no longer acquire shared locks and are not blocked by writers, giving behavior similar to PostgreSQL's default. Enabling RCSI is one of the most impactful configuration changes you can make to a busy SQL Server OLTP database, and most modern SQL Server deployments should have it enabled.</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server also offers <strong class="text-white">Snapshot Isolation (SI)</strong>, which gives each transaction a consistent snapshot of the entire database as of the start of the transaction (as opposed to RCSI, which provides a statement-level snapshot). This is directly comparable to PostgreSQL's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">REPEATABLE READ</code> or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SERIALIZABLE</code> isolation levels.</p>
+
+<p class="text-gray-300 leading-relaxed">Both databases support explicit locking, and both are susceptible to <strong class="text-white">deadlocks</strong> — situations where two transactions each hold a lock that the other needs. Both engines detect and automatically resolve deadlocks by killing one of the involved transactions (the victim). Deadlock information is invaluable for debugging:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Deadlock information appears in the PostgreSQL log when log_lock_waits = on
+-- To find current blocking relationships:
+SELECT
+    blocked.pid                  AS blocked_pid,
+    blocked.usename              AS blocked_user,
+    blocking.pid                 AS blocking_pid,
+    blocking.usename             AS blocking_user,
+    blocked.query                AS blocked_query,
+    blocking.query               AS blocking_query
+FROM pg_stat_activity AS blocked
+JOIN pg_stat_activity AS blocking
+    ON blocking.pid = ANY(pg_blocking_pids(blocked.pid))
+WHERE cardinality(pg_blocking_pids(blocked.pid)) &gt; 0;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Find current blocking chains
+SELECT
+    blocking_session_id,
+    session_id,
+    wait_type,
+    wait_time,
+    wait_resource,
+    t.text AS query_text
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE blocking_session_id &gt; 0;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Background Processes and Maintenance Workers</h3>
+
+<p class="text-gray-300 leading-relaxed">A running database is not just the sum of its client connections. Both PostgreSQL and SQL Server maintain a fleet of background processes that handle critical maintenance work continuously. Understanding these processes helps you diagnose unexpected CPU or I/O spikes, configure maintenance windows appropriately, and understand what the database is doing when no client queries are running.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL</strong> runs several background workers that are central to keeping the engine healthy:</p>
+
+<p class="text-gray-300 leading-relaxed">The <strong class="text-white">autovacuum launcher</strong> spawns autovacuum worker processes. These workers run VACUUM and ANALYZE on tables that have accumulated enough dead tuples or have had enough data changes to make the statistics stale. Autovacuum is often misunderstood as optional or as an overhead — in reality, neglecting it causes table bloat, index bloat, transaction ID wraparound (a serious failure condition), and increasingly inaccurate query plans. Autovacuum behavior is tunable per table, which is essential for large, high-churn tables.</p>
+
+<p class="text-gray-300 leading-relaxed">The <strong class="text-white">WAL writer</strong> periodically flushes WAL buffers to disk, ensuring that WAL records do not remain in memory for too long regardless of commit activity. The <strong class="text-white">checkpointer</strong> is responsible for periodically flushing dirty data pages from shared buffers to disk, creating a known recovery point. Checkpoints are triggered either by time (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">checkpoint_timeout</code>, default 5 minutes) or by WAL volume (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max_wal_size</code>). The <strong class="text-white">background writer</strong> assists the checkpointer by writing dirty pages to disk incrementally, reducing the I/O burst that would otherwise occur at each checkpoint.</p>
+
+<p class="text-gray-300 leading-relaxed">The <strong class="text-white">stats collector</strong> (in versions before PostgreSQL 15, a dedicated process; integrated in later versions) gathers activity statistics that populate the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_*</code> family of views, which are the DBA's primary observability tool.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server</strong> has an analogous set of internal threads:</p>
+
+<p class="text-gray-300 leading-relaxed">The <strong class="text-white">Lazy Writer</strong> scans the Buffer Pool for pages that have not been recently accessed and writes dirty ones to disk, then frees the buffer frames for reuse. This is the mechanism that prevents the Buffer Pool from running out of free pages. It is triggered when free buffer availability drops below a threshold.</p>
+
+<p class="text-gray-300 leading-relaxed">The <strong class="text-white">Checkpoint</strong> thread in SQL Server, like PostgreSQL's checkpointer, periodically writes all dirty pages in the Buffer Pool to disk. SQL Server performs automatic checkpoints, indirect checkpoints (which are more predictable in terms of recovery time), and manual checkpoints (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">CHECKPOINT</code> command). The checkpoint frequency is influenced by the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">recovery interval</code> setting, which controls the target recovery time after a crash.</p>
+
+<p class="text-gray-300 leading-relaxed">The <strong class="text-white">Log Writer</strong> (or log flush thread) ensures that log records in the log cache are written to the transaction log file on disk before a transaction is confirmed as committed. This is the mechanism behind SQL Server's durability guarantee.</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server also has dedicated threads for <strong class="text-white">ghost cleanup</strong> (removing index entries for deleted rows that were marked as "ghost records" rather than immediately removed), which is roughly analogous to the portion of PostgreSQL's VACUUM that cleans index entries.</p>
+
+<p class="text-gray-300 leading-relaxed">You can observe what PostgreSQL's background workers are doing at any moment:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- See all background workers and their current activity
+SELECT
+    pid,
+    usename,
+    application_name,
+    backend_type,
+    state,
+    wait_event_type,
+    wait_event,
+    query
+FROM pg_stat_activity
+WHERE backend_type != 'client backend'
+ORDER BY backend_type;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Identify internal SQL Server system tasks and background workers
+SELECT
+    session_id,
+    status,
+    command,
+    wait_type,
+    wait_time,
+    blocking_session_id,
+    open_transaction_count
+FROM sys.dm_exec_requests
+WHERE session_id &lt; 50  -- system sessions have low session IDs
+ORDER BY session_id;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">How Architecture Shapes Production Decisions</h3>
+
+<p class="text-gray-300 leading-relaxed">Architecture is not something you read once and file away. Every tuning decision, every capacity plan, every incident response traces back to the architectural principles covered in this chapter. Understanding where the engine is spending time — in the query planner, in memory pressure on the buffer pool, in MVCC cleanup, in lock contention — is only possible if you understand how those subsystems work and interact.</p>
+
+<p class="text-gray-300 leading-relaxed">The <strong class="text-white">process-per-connection</strong> model in PostgreSQL means that connection count directly translates to memory and process overhead. A PostgreSQL instance with 1,000 active connections is running 1,000 OS processes, each with its own memory allocation. This is why connection poolers like PgBouncer are effectively mandatory for high-concurrency PostgreSQL deployments. SQL Server's <strong class="text-white">thread-pool model</strong> handles high connection counts more gracefully at the OS level, but it introduces a different class of problems around thread exhaustion, MAXDOP settings, and thread scheduler contention (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">CXPACKET</code> and related wait types).</p>
+
+<p class="text-gray-300 leading-relaxed">The <strong class="text-white">heap-by-default</strong> design in PostgreSQL means that row order on disk has no semantic significance unless you explicitly run CLUSTER. This gives PostgreSQL flexibility in insert patterns but means range scans on non-indexed columns always require a sequential scan of the entire heap. SQL Server's <strong class="text-white">clustered index as the table</strong> design means row locality for the clustering key is maintained automatically, making range queries on the clustering key very efficient — but it also means choosing a poor clustering key (like a random UUID or a frequently updated column) directly degrades physical storage layout and causes fragmentation.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL's <strong class="text-white">MVCC implementation stores dead tuples in the heap</strong> and relies on VACUUM to clean them up. SQL Server's <strong class="text-white">row versioning stores versions in tempdb</strong> when RCSI or Snapshot Isolation is enabled, keeping the primary data pages clean but introducing tempdb as a potential bottleneck. In a heavily write-intensive SQL Server workload with RCSI enabled, tempdb I/O and version store growth become important monitoring targets.</p>
+
+<p class="text-gray-300 leading-relaxed">The <strong class="text-white">WAL in PostgreSQL</strong> is the basis not just for crash recovery but also for logical and streaming replication, point-in-time recovery, and Change Data Capture via logical decoding. Understanding WAL position, WAL lag, and WAL generation rate is essential for any PostgreSQL environment running replication. SQL Server's transaction log plays the same role, but SQL Server separates the mechanisms: log shipping, Always On Availability Groups, and transactional replication each interact with the log in distinct ways, and each has its own operational considerations.</p>
+
+<p class="text-gray-300 leading-relaxed">None of these trade-offs make one system categorically better than the other — they make each system better suited for specific patterns, and they shape the specific skills and habits that make a DBA effective on each platform.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Key Takeaways</h3>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **PostgreSQL uses a process-per-connection model** with a shared buffer pool and heavy reliance on the OS page cache, while SQL Server uses a thread-pool model with a self-managed Buffer Pool — this difference drives many scaling and configuration decisions, including the near-mandatory use of connection poolers in PostgreSQL.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **MVCC is PostgreSQL's native concurrency mechanism**, giving readers and writers full independence without locking, but it requires ongoing VACUUM to clean dead tuple versions; SQL Server uses pessimistic locking by default, with RCSI offering MVCC-like behavior by routing row versions through tempdb.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Data storage at rest differs fundamentally**: PostgreSQL tables are heap files by default with no inherent row ordering, while SQL Server tables are typically stored as clustered indexes where physical row order follows the clustering key — making clustering key selection a critical design decision in SQL Server.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Background processes are architectural necessities, not overhead**: PostgreSQL's autovacuum, checkpointer, and WAL writer are as important to engine health as any query, and SQL Server's Lazy Writer, Checkpoint, and Log Writer threads serve the same structural roles.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **The query pipeline — parse, rewrite/analyze, optimize, execute — is the same conceptual flow in both engines**, but SQL Server's aggressive plan caching and PostgreSQL's reliance on per-execution planning (for ad-hoc queries) create different optimization strategies and different failure modes, particularly around plan regression.</li>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
