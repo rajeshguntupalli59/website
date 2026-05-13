@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 6: Indexing and Retrieval — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 6: Indexing and Retrieval. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 6 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 6: Indexing and Retrieval</h2>
+
+<p class="text-gray-300 leading-relaxed">Few decisions affect database performance more than how you index your tables. Get indexing right and queries that once took minutes run in milliseconds. Get it wrong and you'll spend your career chasing slow queries, watching disk I/O spike, and apologizing to application teams. This chapter walks through how indexes actually work under the hood, how query planners decide whether to use them, how to build and maintain a sensible indexing strategy, and how to push that strategy further when standard B-tree indexes aren't enough. Both PostgreSQL and SQL Server are covered throughout, because while the concepts overlap significantly, the implementation details diverge in ways that matter in production.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">What an Index Is and How It Actually Works</h3>
+
+<p class="text-gray-300 leading-relaxed">An index is a separate data structure maintained alongside a table, designed to let the database engine locate rows without scanning every page in the table. The analogy to a book's index is apt but incomplete — a database index also maintains physical or logical pointers back to the actual data, and the database engine must decide at query time whether using that index is faster than ignoring it entirely.</p>
+
+<p class="text-gray-300 leading-relaxed">The default index type in both PostgreSQL and SQL Server is the B-tree (balanced tree). A B-tree organizes values in sorted order across a hierarchy of nodes. At the top sits the root node, branching down through intermediate nodes to leaf nodes at the bottom. Each leaf node contains index entries and a pointer to the corresponding heap row (PostgreSQL) or row locator (SQL Server). When a query filters on an indexed column, the engine traverses the tree from root to leaf — typically in O(log n) time — rather than reading every data page in the table linearly.</p>
+
+<p class="text-gray-300 leading-relaxed">The key word is "sorted." A B-tree index on a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">last_name</code> column stores last names alphabetically across its leaf pages. This means the index supports not just equality lookups (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">WHERE last_name = 'Smith'</code>) but also range predicates (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">WHERE last_name BETWEEN 'R' AND 'T'</code>), prefix matches (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">WHERE last_name LIKE 'Sm%'</code>), and ORDER BY operations without a separate sort step. The sort order embedded in the index is one of the most underappreciated features of B-tree indexes — when a query's ORDER BY matches the index order, the planner can often skip sorting entirely, which is expensive for large result sets.</p>
+
+<p class="text-gray-300 leading-relaxed">Under the hood, both databases store the index in pages (8KB by default in PostgreSQL, also 8KB by default in SQL Server). As rows are inserted, updated, or deleted, index pages fragment over time. Insertions near a full page cause a page split, dividing the page and creating slack space that gradually accumulates. This fragmentation is why index maintenance — rebuilding or reorganizing indexes — is a routine DBA task, not an occasional emergency.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, the leaf level of a <strong class="text-white">clustered index</strong> is the table itself. The data pages are physically ordered by the clustered index key, which is why a table can have only one clustered index. Every other index is a <strong class="text-white">nonclustered index</strong>, whose leaf pages store the clustered index key (or the Row ID if there's no clustered index) as a row locator. In PostgreSQL, there is no native clustered index in the SQL Server sense. The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">CLUSTER</code> command physically reorders a table's heap pages to match an index, but this ordering is not maintained on subsequent writes — it's a one-time operation, not an ongoing constraint.</p>
+
+<p class="text-gray-300 leading-relaxed">This distinction has real consequences. In SQL Server, a range scan on the clustered index reads contiguous data pages, which is extremely efficient. In PostgreSQL, a range scan using any index must follow heap pointers from index leaf entries back to the heap, which may involve random I/O across many heap pages — a pattern PostgreSQL calls a heap fetch, and the cost of which depends heavily on how physically ordered the heap already is (tracked as the <strong class="text-white">correlation</strong> statistic in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stats</code>).</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">How the Query Planner Decides Whether to Use an Index</h3>
+
+<p class="text-gray-300 leading-relaxed">Building an index doesn't guarantee the planner will use it. Both PostgreSQL and SQL Server use cost-based query optimizers that estimate the total cost of different execution plans and choose the cheapest one. Understanding this decision-making process is what separates a DBA who creates indexes from one who creates *effective* indexes.</p>
+
+<p class="text-gray-300 leading-relaxed">The optimizer estimates two things: how selective the index is (how many rows it will eliminate), and how expensive the I/O path through that index will be compared to alternative paths. For a highly selective predicate — say, looking up a single customer by their email address — the index path is almost always cheaper. For a low-selectivity predicate — say, filtering a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">status</code> column that contains only three distinct values across 50 million rows — a full table scan may actually be cheaper, because the index lookup would scatter I/O across too many heap pages.</p>
+
+<p class="text-gray-300 leading-relaxed">The optimizer's cost estimates depend heavily on statistics: the distribution of values in each column, the number of distinct values, histograms of value frequency, and the correlation between column order and physical storage order. In PostgreSQL, the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ANALYZE</code> command gathers these statistics and stores them in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_statistic</code>, exposed through the view <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stats</code>. In SQL Server, statistics are gathered automatically by default and stored in objects accessible via <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.stats</code> and viewable with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">DBCC SHOW_STATISTICS</code>.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- View statistics for a specific table and column
+SELECT
+    attname,
+    n_distinct,
+    correlation,
+    most_common_vals,
+    most_common_freqs,
+    histogram_bounds
+FROM pg_stats
+WHERE tablename = 'orders'
+  AND attname = 'status';</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- View statistics for a specific table and column
+DBCC SHOW_STATISTICS ('dbo.orders', 'IX_orders_status');
+
+-- Or query the stats metadata
+SELECT
+    s.name         AS stats_name,
+    s.auto_created,
+    s.user_created,
+    sp.last_updated,
+    sp.rows,
+    sp.rows_sampled,
+    sp.unfiltered_rows
+FROM sys.stats s
+CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
+WHERE OBJECT_NAME(s.object_id) = 'orders';</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">EXPLAIN</code> (PostgreSQL) and execution plan (SQL Server) outputs reveal what the planner chose and why. Reading these plans is one of the most important skills a DBA develops. The plan shows whether an index scan, index-only scan, bitmap index scan, or sequential scan was used, what the estimated vs. actual row counts were, and where in the plan execution time is concentrated.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Analyze the execution plan with actual runtime statistics
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+SELECT customer_id, order_date, total_amount
+FROM orders
+WHERE customer_id = 10042
+  AND order_date &gt;= '2024-01-01';</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- View estimated plan in SSMS or capture actual plan at runtime
+SET STATISTICS IO ON;
+SET STATISTICS TIME ON;
+
+SELECT customer_id, order_date, total_amount
+FROM dbo.orders
+WHERE customer_id = 10042
+  AND order_date &gt;= '2024-01-01';
+
+-- Or use the DMV to capture recent query plans
+SELECT TOP 10
+    qs.total_elapsed_time / qs.execution_count AS avg_elapsed_us,
+    qs.execution_count,
+    SUBSTRING(st.text, (qs.statement_start_offset/2)+1,
+        ((CASE qs.statement_end_offset WHEN -1 THEN DATALENGTH(st.text)
+          ELSE qs.statement_end_offset END - qs.statement_start_offset)/2)+1) AS query_text,
+    qp.query_plan
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+ORDER BY avg_elapsed_us DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">When you see the planner ignoring an index you believe should help, the common culprits are stale statistics, parameter sniffing (SQL Server), or plan caching effects. Running <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ANALYZE</code> (PostgreSQL) or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">UPDATE STATISTICS</code> (SQL Server) after significant data changes is often the first thing to try. If statistics are fresh but the index is still ignored, check the actual selectivity — the planner may simply be right that the index isn't worth using for that predicate.</p>
+
+<p class="text-gray-300 leading-relaxed">One scenario worth understanding explicitly: a query that returns a large fraction of the table may trigger a sequential scan even when an index exists. PostgreSQL's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">enable_indexscan</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">enable_seqscan</code> configuration parameters let you force the planner one way or another for testing purposes. In SQL Server, you can use query hints (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">WITH (INDEX(...))</code>) to test the same. Never leave these forcing mechanisms in production code — use them only for investigation, then fix the underlying cause (usually statistics, index design, or the query itself).</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Building and Maintaining Indexes in Production</h3>
+
+<p class="text-gray-300 leading-relaxed">Creating an index in production without disrupting users is something every DBA eventually needs to do. Both databases support online index creation, but the mechanics differ.</p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">CREATE INDEX CONCURRENTLY</code> option builds the index without taking a full table lock. The build happens in multiple passes: first, it scans the table without blocking writes; then, it processes changes that occurred during the first scan; finally, it validates the index. The downside is that the build takes longer, and if the process is interrupted, it leaves behind an invalid index that must be manually dropped. Always check <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_indexes</code> or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_user_indexes</code> after a concurrent build to confirm the index is valid.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">CREATE INDEX ... WITH (ONLINE = ON)</code> performs a similar function for Enterprise Edition. The index is built alongside ongoing DML, with a brief schema modification lock taken only at the start and end of the operation. For Standard Edition, online index builds are not available, which is a real operational constraint in busy systems.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Create an index without locking the table (safe for production)
+CREATE INDEX CONCURRENTLY idx_orders_customer_date
+ON orders (customer_id, order_date DESC);
+
+-- Verify the index is valid after creation
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE tablename = 'orders'
+  AND indexname = 'idx_orders_customer_date';
+
+-- Check for invalid indexes (left behind by failed concurrent builds)
+SELECT indexrelid::regclass AS index_name,
+       indisvalid
+FROM pg_index
+WHERE indisvalid = false;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Create an index online (Enterprise Edition)
+CREATE NONCLUSTERED INDEX IX_orders_customer_date
+ON dbo.orders (customer_id, order_date DESC)
+WITH (ONLINE = ON, SORT_IN_TEMPDB = ON);
+
+-- Check index fragmentation before deciding rebuild vs. reorganize
+SELECT
+    i.name                          AS index_name,
+    ips.avg_fragmentation_in_percent,
+    ips.page_count,
+    ips.avg_page_space_used_in_percent
+FROM sys.dm_db_index_physical_stats(
+         DB_ID(), OBJECT_ID('dbo.orders'), NULL, NULL, 'LIMITED') ips
+JOIN sys.indexes i
+    ON ips.object_id = i.object_id
+   AND ips.index_id  = i.index_id
+WHERE ips.page_count &gt; 100
+ORDER BY ips.avg_fragmentation_in_percent DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Index maintenance strategy should be data-driven. In SQL Server, the standard guidance is to reorganize indexes with 10–30% fragmentation (a lightweight, online operation that defragments leaf pages in place) and rebuild indexes above 30% (which rewrites the entire index, reclaims space, and updates statistics). In PostgreSQL, index bloat is addressed with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">REINDEX</code> or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">REINDEX CONCURRENTLY</code> (PostgreSQL 12+). The autovacuum process helps prevent table bloat but doesn't rebuild indexes — periodic <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">REINDEX CONCURRENTLY</code> is still necessary for heavily updated tables.</p>
+
+<p class="text-gray-300 leading-relaxed">Fill factor deserves mention here. When an index page is built, fill factor determines how full each leaf page is left. A fill factor of 80 (SQL Server) or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">fillfactor = 80</code> (PostgreSQL) leaves 20% of each page empty, providing room for future insertions without immediate page splits. The trade-off is larger index size and slightly more I/O for reads. For tables that are mostly read, use a high fill factor (90–100). For tables with heavy insert or update patterns on sequential key columns, a lower fill factor reduces split activity. For tables with random inserts (e.g., UUID primary keys), low fill factors help considerably.</p>
+
+<p class="text-gray-300 leading-relaxed">Index maintenance should also account for unused indexes. Every index on a table adds overhead to every <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">INSERT</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">UPDATE</code>, and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">DELETE</code> operation on that table. A table with 12 indexes has 12 structures that must be kept current on every write — the read benefits of those indexes must outweigh the write cost. This is the balance that makes indexing a judgment call rather than a mechanical exercise.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Index Types and When Each One Fits</h3>
+
+<p class="text-gray-300 leading-relaxed">B-tree indexes handle the majority of workloads, but both PostgreSQL and SQL Server offer specialized index types that dramatically outperform B-trees for specific access patterns.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Hash Indexes</strong></p>
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, hash indexes store a hash of the indexed value and support only equality lookups — no ranges, no ordering, no LIKE. Before PostgreSQL 10, hash indexes were not WAL-logged and were unsafe for crash recovery. Since PostgreSQL 10, they are fully crash-safe and can be a good choice for equality-only lookups on wide columns (like long strings), since the hash reduces the index entry size. SQL Server also supports hash indexes, but only for memory-optimized (In-Memory OLTP) tables, where they are the dominant index type for equality access on in-memory data.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">GIN — Generalized Inverted Index (PostgreSQL)</strong></p>
+<p class="text-gray-300 leading-relaxed">GIN indexes are built for cases where a single column value contains multiple items that you want to search individually. The canonical use cases are full-text search (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">tsvector</code> columns), JSONB columns, and array columns. A GIN index on a JSONB column allows queries like <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">WHERE doc @> '{"status": "active"}'</code> to run efficiently by indexing every key-value pair within the document. GIN indexes are larger and slower to build than B-trees, but they make queries against complex data types practical that would otherwise require full table scans.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">GiST — Generalized Search Tree (PostgreSQL)</strong></p>
+<p class="text-gray-300 leading-relaxed">GiST is a framework that supports a family of index types: geometric data (PostGIS), range types, full-text search (as an alternative to GIN), and more. A GiST index on a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">geometry</code> column supports spatial queries like "find all locations within 5km of this point." GiST trades some lookup efficiency for flexibility — it allows lossy indexing, meaning the index may return false positives that the engine then filters out in a recheck step.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">BRIN — Block Range Index (PostgreSQL)</strong></p>
+<p class="text-gray-300 leading-relaxed">BRIN indexes are extremely compact. Rather than indexing every individual row, a BRIN index records the minimum and maximum value of an indexed column within each block range (a contiguous group of heap pages). For queries that filter on a column that is naturally ordered in the table — such as an <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">order_date</code> on an append-only orders table, or a sensor reading timestamp — BRIN can be 100x smaller than a B-tree with nearly comparable performance. A BRIN index on a 1TB time-series table might occupy less than 100MB. The limitation is that BRIN only helps when there is strong correlation between column values and physical storage order.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Filtered/Partial Indexes</strong></p>
+<p class="text-gray-300 leading-relaxed">Both PostgreSQL and SQL Server support partial indexes (called filtered indexes in SQL Server). A partial index is built only over rows that satisfy a WHERE condition. This is one of the most powerful indexing techniques available, and it's underused in most production systems.</p>
+
+<p class="text-gray-300 leading-relaxed">Consider a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">jobs</code> table with 100 million rows, where only 50,000 rows have <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">status = 'pending'</code>. A standard index on <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">status</code> would index all 100 million rows. A partial index on <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">status = 'pending'</code> indexes only 50,000 rows — it's smaller, faster to scan, and faster to update since completed jobs never touch it.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Partial index covering only active/pending work
+CREATE INDEX idx_jobs_pending
+ON jobs (created_at, priority)
+WHERE status = 'pending';
+
+-- This query will use the partial index
+SELECT job_id, created_at, priority
+FROM jobs
+WHERE status = 'pending'
+  AND created_at &gt; NOW() - INTERVAL '24 hours'
+ORDER BY priority DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Filtered index covering only pending jobs
+CREATE NONCLUSTERED INDEX IX_jobs_pending
+ON dbo.jobs (created_at, priority)
+WHERE status = 'pending';
+
+-- Queries must include the filter predicate to use the filtered index
+SELECT job_id, created_at, priority
+FROM dbo.jobs
+WHERE status = 'pending'
+  AND created_at &gt; DATEADD(HOUR, -24, GETDATE())
+ORDER BY priority DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Covering Indexes and INCLUDE Columns</strong></p>
+<p class="text-gray-300 leading-relaxed">A covering index satisfies a query entirely from the index without touching the base table. When the index contains all the columns needed by a query — both for filtering and for projection — the engine never has to follow a pointer back to the heap (PostgreSQL) or clustered index (SQL Server). This eliminates what PostgreSQL calls a heap fetch and SQL Server calls a key lookup, both of which can be expensive under high concurrency.</p>
+
+<p class="text-gray-300 leading-relaxed">Both databases allow extra columns to be stored in the leaf level of the index without participating in the sort order, using the INCLUDE clause. This lets you add projection columns to an index without widening the sort key (which would make the index larger and slower for range scans).</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Covering index: customer_id is the search key, remaining columns are INCLUDEd
+CREATE INDEX idx_orders_covering
+ON orders (customer_id)
+INCLUDE (order_date, total_amount, status);</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Covering index with included columns
+CREATE NONCLUSTERED INDEX IX_orders_covering
+ON dbo.orders (customer_id)
+INCLUDE (order_date, total_amount, status);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, the Index-Only Scan is the plan node you want to see when you've built a covering index. The plan will confirm whether the index-only scan is being used, and the BUFFERS output will show whether heap pages are still being fetched (which happens when the visibility map indicates that not all heap pages are fully visible — a consequence of autovacuum lag). Running <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VACUUM</code> on the table after bulk operations brings the visibility map current and allows index-only scans to skip heap fetches entirely.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Finding What's Missing, What's Redundant, and What's Hurting You</h3>
+
+<p class="text-gray-300 leading-relaxed">A production database that's been running for two or three years accumulates indexing debt: missing indexes on columns that are now heavily queried, duplicate indexes created by different developers who didn't realize an equivalent index already existed, and indexes that made sense when a feature launched but are now completely unused. Auditing the index landscape is a regular DBA responsibility, not a one-off exercise.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Identifying missing indexes</strong></p>
+<p class="text-gray-300 leading-relaxed">Both databases offer tooling to identify frequently accessed queries that lack supporting indexes.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_db_missing_index_details</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_db_missing_index_group_stats</code> capture information about index opportunities the optimizer identified during query compilation. These DMVs are reset when SQL Server restarts, so they reflect only the period since the last restart (or the last DMV clear). The output is useful but should be treated as suggestions — the optimizer sometimes recommends indexes that would help individual queries but would harm overall workload throughput.</p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, there's no built-in equivalent, but <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_statements</code> combined with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">EXPLAIN</code> automation gives a similar picture. Many organizations run automated pipelines that collect slow query logs, analyze query plans, and flag sequential scans on large tables where a viable index predicate exists.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Find tables with high sequential scan counts — potential missing index candidates
+SELECT
+    relname                        AS table_name,
+    seq_scan,
+    seq_tup_read,
+    idx_scan,
+    seq_tup_read / NULLIF(seq_scan, 0) AS avg_rows_per_seq_scan,
+    n_live_tup                     AS estimated_row_count
+FROM pg_stat_user_tables
+WHERE seq_scan &gt; 0
+  AND n_live_tup &gt; 10000
+ORDER BY seq_tup_read DESC
+LIMIT 20;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Missing index recommendations from the optimizer
+SELECT
+    mid.statement                              AS table_name,
+    migs.avg_total_user_cost * migs.avg_user_impact
+        * (migs.user_seeks + migs.user_scans)  AS index_benefit_score,
+    migs.user_seeks,
+    migs.user_scans,
+    mid.equality_columns,
+    mid.inequality_columns,
+    mid.included_columns
+FROM sys.dm_db_missing_index_groups mig
+JOIN sys.dm_db_missing_index_group_stats migs
+    ON mig.index_group_handle = migs.group_handle
+JOIN sys.dm_db_missing_index_details mid
+    ON mig.index_handle = mid.index_handle
+WHERE migs.avg_total_user_cost * migs.avg_user_impact
+        * (migs.user_seeks + migs.user_scans) &gt; 1000
+ORDER BY index_benefit_score DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Identifying unused indexes</strong></p>
+<p class="text-gray-300 leading-relaxed">Unused indexes are pure write overhead. Every time a row is modified, the database must update all indexes on that table, whether or not those indexes are ever read. Removing unused indexes reduces DML overhead and can meaningfully improve write throughput on busy OLTP tables.</p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_user_indexes</code> tracks index scans since the last statistics reset. An index with zero or near-zero <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">idx_scan</code> after weeks of normal workload is a strong candidate for removal — but verify against your pg_stat_statements data and consider whether the index might be heavily used during period batch jobs that haven't run during your observation window.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_db_index_usage_stats</code> provides read and write counts per index since the last restart. An index with high <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">user_updates</code> (write overhead) and zero or near-zero <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">user_seeks</code> + <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">user_scans</code> + <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">user_lookups</code> is a candidate for removal.</p>
+
+<p class="text-gray-300 leading-relaxed">Before dropping any index in production, always script it first. A single <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">CREATE INDEX</code> statement stored somewhere accessible means you can recreate the index within minutes if something that depended on it surfaces after the drop.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Identifying duplicate and redundant indexes</strong></p>
+<p class="text-gray-300 leading-relaxed">Duplicate indexes are exact duplicates — same columns, same order. Redundant indexes are indexes where one index's leading columns are a prefix of another's. For example, if you have an index on <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">(customer_id)</code> and another on <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">(customer_id, order_date)</code>, the second index can serve all the same equality lookups as the first, making the first index redundant for most purposes (unless you need to support an index-only scan that doesn't need <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">order_date</code>).</p>
+
+<p class="text-gray-300 leading-relaxed">Detecting these requires querying index metadata and comparing column lists. There is no single built-in tool for this in either database, but the query is straightforward to write against <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_index</code>/<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_attribute</code> in PostgreSQL or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.index_columns</code>/<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.columns</code> in SQL Server.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Advanced Indexing for High-Throughput and Complex Workloads</h3>
+
+<p class="text-gray-300 leading-relaxed">At sufficient scale, standard indexing practice reaches its limits, and the strategies that work for a 10GB database need rethinking for a 10TB one. The following scenarios represent the kind of indexing problems that separate routine database administration from performance engineering.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">UUID Primary Keys and Random Index Fragmentation</strong></p>
+<p class="text-gray-300 leading-relaxed">One of the most common performance problems in PostgreSQL and SQL Server systems that use UUID (universally unique identifier) primary keys is extreme index fragmentation. Because UUIDs are randomly distributed, new index entries land randomly across the B-tree leaf level rather than at the end. Every page fills up and splits constantly, leading to high fragmentation, low page density, and excessive I/O. </p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, using <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">gen_random_uuid()</code> (which produces UUID v4, fully random) as a primary key creates this problem. The practical solutions are: use a sequential surrogate key (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">BIGSERIAL</code>) with the UUID as an alternate key, use UUID v7 (time-ordered UUIDs, available in PostgreSQL 17 via <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">uuidv7()</code> or installable via extensions), or use <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_idkit</code> for ordered ID generation. In SQL Server, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">NEWSEQUENTIALID()</code> generates UUIDs in sequential order suitable for clustered index keys, while <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">NEWID()</code> produces random UUIDs that cause the same fragmentation problem.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Composite Index Column Ordering</strong></p>
+<p class="text-gray-300 leading-relaxed">The leading column of a composite index is the one the engine filters first — only predicates on the leading column (or a prefix of leading columns in order) can use the index for range access. A query filtering on `</p>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
