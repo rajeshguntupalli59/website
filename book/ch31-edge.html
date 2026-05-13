@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 31: Edge Computing — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 31: Edge Computing. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 31 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 31: Edge Computing</h2>
+
+<p class="text-gray-300 leading-relaxed">Edge computing has fundamentally changed the assumptions database administrators have been able to make for decades. For most of computing history, the database lived in a data center — a controlled environment with reliable power, fast interconnects, abundant storage, and teams of people available to maintain it. Edge computing dismantles every one of those assumptions. Now, database instances run on oil rigs, in autonomous vehicles, inside retail stores, on factory floors, and aboard ships crossing the ocean. PostgreSQL and SQL Server both have deployment stories in these environments, and as a DBA working in 2024 and beyond, understanding how to design, deploy, and maintain databases at the edge is no longer optional. This chapter covers what edge computing actually means for database infrastructure, how to architect PostgreSQL and SQL Server deployments for constrained and intermittently connected environments, synchronization strategies that keep edge data consistent with central systems, and the operational realities of managing databases you cannot always reach.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">What Edge Computing Actually Means for a Database</h3>
+
+<p class="text-gray-300 leading-relaxed">The term "edge computing" gets used loosely in marketing, so it is worth establishing a precise definition before discussing database architecture. Edge computing places compute and storage resources physically close to where data is generated and consumed, rather than routing everything to a centralized cloud or data center. The "edge" might be a small server running inside a wind turbine enclosure, a Raspberry Pi attached to a conveyor belt, a ruggedized laptop in a field service vehicle, or a full rack of equipment in a regional distribution center. The common thread is that the edge node operates with some degree of independence from central infrastructure.</p>
+
+<p class="text-gray-300 leading-relaxed">For a database, this independence has four practical consequences. First, connectivity is unreliable. An edge node might have milliseconds of high-bandwidth connectivity followed by hours of complete isolation. Second, hardware is constrained. Edge devices often run on limited RAM, slower storage, and processors with restricted thermal envelopes. Third, physical access is limited or expensive. Rebooting a server in a remote oil platform field requires a helicopter. Fourth, the edge database is rarely the system of record — it is typically a participant in a larger data ecosystem that includes a central database, and keeping those two in sync is where most of the complexity lives.</p>
+
+<p class="text-gray-300 leading-relaxed">Understanding these four pressures is the starting point for every architectural decision that follows. A configuration that works perfectly in a data center — aggressive parallel query execution, large shared_buffers, synchronous replication, frequent vacuum — may perform terribly or fail outright at the edge. The DBA's job is to adapt every default assumption.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL is particularly common at the edge because it is open source, runs on ARM processors and Linux variants without licensing complications, and has a small memory footprint when properly tuned. SQL Server has a dedicated edge offering — Azure SQL Edge — that runs as a container on ARM64 and x64 hardware, specifically targeting IoT and industrial scenarios. Understanding both tools' capabilities in constrained environments gives you flexibility when the workload or the organization demands it.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Designing Schemas and Storage for Constrained Hardware</h3>
+
+<p class="text-gray-300 leading-relaxed">Schema design for edge deployments is driven by a simple goal: store the minimum necessary data, in the most efficient format, with the most efficient access patterns. This sounds obvious, but most schema designs are created in the context of enterprise servers with terabytes of storage and hundreds of gigabytes of RAM. Transplanting those schemas to edge hardware without adaptation is a common and expensive mistake.</p>
+
+<p class="text-gray-300 leading-relaxed">Start with data types. On edge hardware, choosing <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SMALLINT</code> over <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">INTEGER</code> or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">REAL</code> over <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">DOUBLE PRECISION</code> has measurable impact at scale. A table storing sensor readings at 10Hz across 500 sensors accumulates 432 million rows per day. Reducing each row by 4 bytes saves 1.6 GB per day — significant when your total storage is 64 GB and you need to retain 30 days of data locally.</p>
+
+<p class="text-gray-300 leading-relaxed">Partitioning by time is almost always appropriate for edge telemetry workloads. On PostgreSQL, declarative range partitioning on a timestamp column allows you to drop old partitions instantly — no slow DELETE operations that generate WAL and lock rows. On SQL Server, partitioned tables using a partition function achieve similar results, though the management syntax is more verbose.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Time-partitioned sensor table for edge deployment
+CREATE TABLE sensor_readings (
+    reading_id      BIGSERIAL,
+    sensor_id       SMALLINT        NOT NULL,
+    recorded_at     TIMESTAMPTZ     NOT NULL,
+    temperature     REAL,
+    pressure        REAL,
+    humidity        REAL
+) PARTITION BY RANGE (recorded_at);
+
+-- Create monthly partitions
+CREATE TABLE sensor_readings_2024_01
+    PARTITION OF sensor_readings
+    FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');
+
+CREATE TABLE sensor_readings_2024_02
+    PARTITION OF sensor_readings
+    FOR VALUES FROM ('2024-02-01') TO ('2024-03-01');
+
+-- Drop old data instantly with no heap bloat
+DROP TABLE sensor_readings_2024_01;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Time-partitioned sensor table for edge deployment
+CREATE PARTITION FUNCTION pf_sensor_monthly (DATETIME2)
+AS RANGE RIGHT FOR VALUES (
+    '2024-01-01', '2024-02-01', '2024-03-01'
+);
+
+CREATE PARTITION SCHEME ps_sensor_monthly
+AS PARTITION pf_sensor_monthly ALL TO ([PRIMARY]);
+
+CREATE TABLE sensor_readings (
+    reading_id      BIGINT          IDENTITY(1,1),
+    sensor_id       SMALLINT        NOT NULL,
+    recorded_at     DATETIME2       NOT NULL,
+    temperature     REAL,
+    pressure        REAL,
+    humidity        REAL
+) ON ps_sensor_monthly(recorded_at);
+
+-- Switch old partition out (near-instant, metadata-only)
+ALTER TABLE sensor_readings
+    SWITCH PARTITION 1 TO sensor_readings_archive PARTITION 1;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Indexes at the edge require discipline. Each index consumes storage and, more importantly, consumes write throughput — a resource that is often the bottleneck in high-ingestion edge scenarios. Limit indexes to those required by the actual queries running on the edge node. In most edge deployments, those queries are: ingest writes, recent-window range reads by sensor ID, and outbound sync queries that extract rows modified since the last sync checkpoint. Three indexes maximum on a high-ingestion table is a reasonable default to start from and deviate from only with evidence.</p>
+
+<p class="text-gray-300 leading-relaxed">Compression is another lever. PostgreSQL's TOAST mechanism automatically compresses columns exceeding roughly 2 KB, but for structured numeric data in regular-sized columns, you get no automatic compression. TimescaleDB — a PostgreSQL extension widely used in edge IoT scenarios — provides columnar compression for hypertables that can reduce storage by 90% for typical telemetry data. On SQL Server, row and page compression are available even in the Edge edition and are straightforward to enable:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Enable TimescaleDB compression on a hypertable
+-- (requires TimescaleDB extension)
+ALTER TABLE sensor_readings SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'sensor_id',
+    timescaledb.compress_orderby = 'recorded_at DESC'
+);
+
+-- Add a compression policy: compress chunks older than 7 days
+SELECT add_compression_policy('sensor_readings', INTERVAL '7 days');
+
+-- Check compression savings
+SELECT
+    chunk_name,
+    pg_size_pretty(before_compression_total_bytes) AS before,
+    pg_size_pretty(after_compression_total_bytes)  AS after,
+    ROUND(
+        (1 - after_compression_total_bytes::NUMERIC
+             / NULLIF(before_compression_total_bytes, 0)) * 100, 1
+    ) AS savings_pct
+FROM chunk_compression_stats('sensor_readings');</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Enable page compression on sensor_readings table
+ALTER TABLE sensor_readings REBUILD
+WITH (DATA_COMPRESSION = PAGE);
+
+-- Enable compression on a specific partition
+ALTER TABLE sensor_readings REBUILD
+PARTITION = 2
+WITH (DATA_COMPRESSION = PAGE);
+
+-- Check compression ratios in sys DMVs
+SELECT
+    p.object_id,
+    OBJECT_NAME(p.object_id)   AS table_name,
+    p.partition_number,
+    p.data_compression_desc,
+    p.rows,
+    a.total_pages * 8          AS total_kb
+FROM sys.partitions p
+JOIN sys.allocation_units a
+    ON a.container_id = p.partition_id
+WHERE OBJECT_NAME(p.object_id) = 'sensor_readings';</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Write-ahead log (WAL) sizing on PostgreSQL edge nodes deserves attention. The default <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">wal_level = replica</code> is needed for logical replication used in sync strategies, but the WAL segments will accumulate if sync is interrupted. Setting <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max_wal_size</code> to a value appropriate for your storage budget — not the server default — prevents WAL from consuming the disk during a multi-day connectivity outage.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Synchronization Strategies Between Edge and Central</h3>
+
+<p class="text-gray-300 leading-relaxed">Synchronization is where edge database architecture becomes genuinely hard. The fundamental problem is that the edge database and the central database diverge during disconnection and must be reconciled when connectivity resumes — correctly, completely, and without overwhelming the central system when dozens of edge nodes reconnect simultaneously.</p>
+
+<p class="text-gray-300 leading-relaxed">The synchronization strategy you choose depends on answers to three questions: Does data flow one direction (edge to center only), or must data flow both ways? How long can the edge node be disconnected before data loss becomes a business problem? And can conflicts occur — that is, can the same row be modified at both edge and center while disconnected?</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Unidirectional upload</strong> is the simplest case. Edge nodes collect telemetry data that is never modified by the central system. In this pattern, the edge node buffers rows locally and periodically flushes them upstream. PostgreSQL logical replication handles this natively. Configure the edge as a publication and the central server as a subscriber. When the connection is interrupted, the replication slot on the edge retains WAL until the subscriber reconnects. When connectivity resumes, the central server catches up automatically.</p>
+
+<p class="text-gray-300 leading-relaxed">The risk here is slot bloat. A replication slot that cannot drain will cause WAL to accumulate indefinitely on the edge node. On a constrained disk, this is fatal. Set <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">wal_keep_size</code> conservatively and monitor <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_replication_slots</code> for <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">restart_lsn</code> lag. If lag exceeds your storage budget, you must either expand storage, reduce the outage tolerance, or switch to a polling-based sync approach that does not use slots.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- On the edge node: create publication for outbound data
+CREATE PUBLICATION edge_sensor_pub
+FOR TABLE sensor_readings, device_events
+WITH (publish = 'insert');  -- edge data is insert-only
+
+-- Monitor replication slot health on the edge node
+SELECT
+    slot_name,
+    plugin,
+    active,
+    pg_size_pretty(
+        pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)
+    ) AS lag_size,
+    restart_lsn,
+    confirmed_flush_lsn
+FROM pg_replication_slots
+WHERE slot_type = 'logical';</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Azure SQL Edge uses SQL Server replication or Sync Agent
+-- Check distribution agent status for a subscription
+SELECT
+    s.subscriber_db,
+    h.runstatus,
+    h.comments,
+    h.delivered_commands,
+    h.delivery_latency,
+    h.time
+FROM MSsubscription_properties s
+JOIN MSdistribution_history h
+    ON h.agent_id = s.agent_id
+ORDER BY h.time DESC;
+
+-- Check pending commands waiting for delivery
+SELECT
+    agent_id,
+    pending_commands,
+    pending_transactions
+FROM MSsubscriptions
+WHERE subscriber_db = 'EdgeSensorDB';</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Bidirectional sync</strong> with conflict resolution is substantially more complex. This pattern arises when a central system needs to push configuration or lookup data down to the edge, and the edge pushes readings back up. You now have two writable copies of some data, and conflicts are possible.</p>
+
+<p class="text-gray-300 leading-relaxed">The most practical approach for most edge deployments is to partition ownership. Define, at design time, which tables are "edge-owned" (the edge can insert and update them, the center can only read them) and which tables are "center-owned" (the center can insert and update them, the edge can only read them). This eliminates conflicts by construction, which is far simpler than building conflict resolution logic.</p>
+
+<p class="text-gray-300 leading-relaxed">When bidirectional ownership of the same table cannot be avoided, you need either timestamp-based last-write-wins (simple but can silently discard legitimate writes) or application-level merge logic where conflicts are surfaced to a human or business rule. Neither option is comfortable. Design your schema to avoid this situation if at all possible.</p>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server deployments, Azure Data Sync provides a managed service for hub-and-spoke synchronization between an Azure SQL Database hub and Azure SQL Edge nodes. It handles conflict detection with configurable hub-wins or member-wins policies. The trade-off is that Azure Data Sync adds latency and has throughput limits that make it unsuitable for high-velocity sensor data; it works well for lower-frequency configuration and reference data.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Checkpoint-based polling</strong> is an alternative to replication slots that is more robust during extended outages. Instead of relying on WAL retention, each table carries a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">modified_at</code> timestamp column updated by a trigger or application code. The central sync process records the last-synced timestamp per edge node and queries for rows modified after that checkpoint. This approach survives arbitrary outages because it requires no server-side state on the edge — only the checkpoint timestamp stored centrally.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Add a modification timestamp and trigger to track changes
+ALTER TABLE sensor_readings
+    ADD COLUMN synced_at TIMESTAMPTZ DEFAULT NULL,
+    ADD COLUMN modified_at TIMESTAMPTZ DEFAULT NOW() NOT NULL;
+
+CREATE OR REPLACE FUNCTION trg_set_modified_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.modified_at := NOW();
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER sensor_readings_modified
+    BEFORE UPDATE ON sensor_readings
+    FOR EACH ROW EXECUTE FUNCTION trg_set_modified_at();
+
+-- Central sync query: fetch unsynced rows since last checkpoint
+-- Run from central server via dblink or foreign data wrapper
+SELECT
+    reading_id, sensor_id, recorded_at,
+    temperature, pressure, humidity, modified_at
+FROM sensor_readings
+WHERE modified_at &gt; $1          -- $1 = last sync checkpoint
+  AND (synced_at IS NULL OR synced_at &lt; modified_at)
+ORDER BY modified_at
+LIMIT 50000;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Checkpoint-based sync using a rowversion/timestamp column
+ALTER TABLE sensor_readings
+    ADD row_version ROWVERSION NOT NULL;
+
+-- The ROWVERSION column auto-increments on every insert/update
+-- Store the last synced rowversion value in the sync state table
+CREATE TABLE sync_state (
+    edge_node_id    INT           NOT NULL PRIMARY KEY,
+    last_row_version BINARY(8)   NOT NULL DEFAULT 0x0000000000000000,
+    last_sync_at    DATETIME2     NOT NULL DEFAULT GETUTCDATE()
+);
+
+-- Central sync query: fetch rows modified since last checkpoint
+DECLARE @last_rv BINARY(8);
+SELECT @last_rv = last_row_version
+FROM sync_state
+WHERE edge_node_id = @edge_node_id;
+
+SELECT
+    reading_id, sensor_id, recorded_at,
+    temperature, pressure, humidity, row_version
+FROM sensor_readings
+WHERE row_version &gt; @last_rv
+ORDER BY row_version
+OFFSET 0 ROWS FETCH NEXT 50000 ROWS ONLY;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ROWVERSION</code> type on SQL Server is particularly well-suited to this pattern because it is database-scoped, monotonically increasing, and updated automatically on every write — no trigger required. There is no direct equivalent in PostgreSQL, which is why the trigger-based <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">modified_at</code> approach is standard there.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Configuration Tuning for Edge Hardware</h3>
+
+<p class="text-gray-300 leading-relaxed">Tuning a database for edge hardware is the inverse of tuning for a large server. On a 512 GB RAM enterprise server, you tune to exploit all available memory. On an edge node with 4 GB RAM running alongside an operating system, application code, and networking daemons, you tune to stay within your memory budget and to behave gracefully when that budget is under pressure.</p>
+
+<p class="text-gray-300 leading-relaxed">For PostgreSQL on a 4 GB edge node, a conservative baseline configuration looks like this: <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">shared_buffers = 512MB</code> (not the commonly cited 25% of RAM — the OS page cache also serves PostgreSQL and you need headroom), <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">work_mem = 4MB</code> (with a hard ceiling to prevent parallel sort operations from collectively exhausting RAM), <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max_connections = 20</code> (edge applications typically have small connection pools), <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max_parallel_workers = 2</code>, and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max_parallel_workers_per_gather = 1</code>. Parallel query is valuable on large servers; on edge hardware, it competes with other processes for CPU time and does not deliver proportional benefit.</p>
+
+<p class="text-gray-300 leading-relaxed">WAL configuration for edge reliability: set <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">synchronous_commit = on</code>. This sounds counterintuitive — the common advice is to set it to <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">off</code> for write performance — but on edge hardware where power can be interrupted without warning, losing committed transactions is unacceptable. The durability guarantee is worth the modest write latency increase. Set <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">checkpoint_completion_target = 0.9</code> to spread checkpoint I/O across a longer window, reducing disk throughput spikes.</p>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server (Azure SQL Edge), the equivalent tuning focuses on <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max server memory</code>, which defaults to a value that will consume everything available. Set it explicitly. On a 4 GB node, setting <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max server memory (MB) = 2048</code> leaves room for the OS, the sync agent, and any other processes. Enable the Resource Governor if your workload mixes high-priority telemetry ingestion with lower-priority sync queries — this prevents batch sync operations from starving real-time writes.</p>
+
+<p class="text-gray-300 leading-relaxed">Autovacuum behavior in PostgreSQL needs explicit attention on edge deployments. The default autovacuum is calibrated for large servers. On edge hardware, autovacuum running at the wrong time can spike I/O and CPU, causing ingestion latency spikes visible in the telemetry data you are trying to collect. Configure <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">autovacuum_vacuum_cost_delay = 20ms</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">autovacuum_vacuum_cost_limit = 200</code> to throttle autovacuum's I/O consumption. For insert-heavy tables with no updates or deletes (common in sensor ingestion), autovacuum's role is primarily freezing transaction IDs — the default settings cause it to run more aggressively than needed. Set <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">autovacuum_vacuum_scale_factor = 0.2</code> on these tables to reduce unnecessary vacuum runs.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Table-level autovacuum tuning for high-ingestion edge tables
+ALTER TABLE sensor_readings SET (
+    autovacuum_vacuum_scale_factor = 0.2,
+    autovacuum_analyze_scale_factor = 0.1,
+    autovacuum_vacuum_cost_delay = 20,
+    autovacuum_vacuum_cost_limit = 200
+);
+
+-- Confirm current table-level settings
+SELECT
+    relname,
+    reloptions
+FROM pg_class
+WHERE relname = 'sensor_readings';
+
+-- Check autovacuum activity without disrupting production
+SELECT
+    schemaname,
+    relname,
+    n_dead_tup,
+    n_live_tup,
+    last_vacuum,
+    last_autovacuum,
+    last_analyze,
+    last_autoanalyze
+FROM pg_stat_user_tables
+WHERE relname = 'sensor_readings';</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Set memory ceiling for Azure SQL Edge instance
+EXEC sp_configure 'show advanced options', 1;
+RECONFIGURE;
+
+EXEC sp_configure 'max server memory (MB)', 2048;
+RECONFIGURE;
+
+-- Set max degree of parallelism to limit CPU competition
+EXEC sp_configure 'max degree of parallelism', 2;
+RECONFIGURE;
+
+-- Check current configuration values
+SELECT
+    name,
+    value_in_use,
+    description
+FROM sys.configurations
+WHERE name IN (
+    'max server memory (MB)',
+    'max degree of parallelism',
+    'cost threshold for parallelism'
+);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Disk I/O is often the hardest constraint on edge hardware. Industrial edge devices frequently use SD cards or eMMC storage for cost and power reasons. These have asymmetric read/write performance and limited write endurance. Placing PostgreSQL's WAL on a separate storage device from the data files eliminates the I/O contention that causes most edge write latency issues. Even separating onto two partitions of the same physical device helps if the storage controller has independent queues per partition. For SQL Server, the same separation of data files and log files applies.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Monitoring and Managing Databases You Cannot Directly Reach</h3>
+
+<p class="text-gray-300 leading-relaxed">Managing a database you cannot physically touch — and may not be able to connect to on demand — requires building observability into the system itself, rather than relying on someone being present to investigate. This is the operational discipline that separates production edge deployments from prototypes that happen to be running outside a data center.</p>
+
+<p class="text-gray-300 leading-relaxed">The foundation is local metric collection that persists regardless of connectivity. Do not rely on a centralized monitoring system to pull metrics from edge nodes — if the node is offline, those metrics are lost. Instead, write database health metrics to a local table on the edge node, include those metrics in your regular sync batch, and import them into your central monitoring system when connectivity is available. This gives you a complete health picture even if the node was isolated for three days.</p>
+
+<p class="text-gray-300 leading-relaxed">Key metrics to collect locally every minute include: active connection count, longest running query duration, replication slot lag (in bytes), table bloat estimates from <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_user_tables</code>, cache hit ratio from <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_database</code>, and available disk space. On SQL Server Edge, equivalent metrics come from <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_os_performance_counters</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_requests</code>, and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_os_sys_info</code>.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Local health metrics table for offline persistence
+CREATE TABLE node_health_metrics (
+    captured_at         TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    active_connections  SMALLINT,
+    longest_query_sec   REAL,
+    cache_hit_ratio     REAL,
+    wal_slot_lag_mb     REAL,
+    dead_tuple_count    BIGINT,
+    free_disk_mb        INTEGER,
+    synced_to_central   BOOLEAN         NOT NULL DEFAULT FALSE
+);
+
+-- Populate via scheduled job (pg_cron or external cron)
+INSERT INTO node_health_metrics (
+    active_connections,
+    longest_query_sec,
+    cache_hit_ratio,
+    wal_slot_lag_mb,
+    dead_tuple_count
+)
+SELECT
+    (SELECT count(*) FROM pg_stat_activity WHERE state = 'active'),
+    (SELECT COALESCE(MAX(EXTRACT(EPOCH FROM (NOW() - query_start))), 0)
+     FROM pg_stat_activity WHERE state = 'active'),
+    (SELECT ROUND(
+        (blks_hit::NUMERIC / NULLIF(blks_hit + blks_read, 0)) * 100, 2
+     )
+     FROM pg_stat_database WHERE datname = current_database()),
+    (SELECT COALESCE(MAX(
+        pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn)
+     ) / 1048576.0, 0)
+     FROM pg_replication_slots),
+    (SELECT COALESCE(SUM(n_dead_tup), 0)
+     FROM pg_stat_user_tables);</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
