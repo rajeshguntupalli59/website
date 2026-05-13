@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 13: Monitoring and Alerts — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 13: Monitoring and Alerts. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 13 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 13: Monitoring and Alerts</h2>
+
+<p class="text-gray-300 leading-relaxed">A database that runs unattended without proper monitoring is an accident waiting to happen. Monitoring is the practice of continuously observing the health, performance, and behavior of your database systems so that problems are caught before users notice them — or before they escalate into outages. Alerting is the mechanism that turns observations into action. Together, they form the operational backbone of any serious DBA practice. This chapter walks through what to monitor, how to monitor it effectively in both PostgreSQL and SQL Server, how to build alerts that are useful rather than noisy, and how to construct the kind of observability infrastructure that keeps production systems healthy and recoverable.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Why Monitoring Is a DBA's First Line of Defense</h3>
+
+<p class="text-gray-300 leading-relaxed">Most database problems do not appear out of nowhere. A table bloats slowly over weeks. A query plan changes and a query that used to run in 200 milliseconds starts taking 4 seconds. A disk fills to 95% capacity before anyone notices. Connection counts creep upward as an application leaks connections during a traffic spike. None of these are sudden events — they are trends, and trends are only visible if you are watching.</p>
+
+<p class="text-gray-300 leading-relaxed">The distinction between *monitoring* and *alerting* is worth stating clearly. Monitoring is passive and continuous: it collects data about the state of your system over time. Alerting is reactive and conditional: it fires when monitored data crosses a threshold you define. You need both. Monitoring without alerting means someone has to manually look at dashboards to catch problems, which is neither scalable nor reliable. Alerting without monitoring means you have no historical context to understand why an alert fired or how a problem evolved.</p>
+
+<p class="text-gray-300 leading-relaxed">A well-designed monitoring strategy covers four broad categories:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Availability</strong> — Is the database instance reachable? Are replicas healthy? Is the listener or service running?</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Performance</strong> — How long are queries taking? Are waits accumulating? Is I/O throughput within expected bounds?</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Capacity</strong> — How full are the disks? How large are tables and indexes? How much transaction log is being generated?</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Correctness</strong> — Are backups succeeding? Are replication lag values acceptable? Are autovacuum and maintenance jobs running on schedule?</p>
+
+<p class="text-gray-300 leading-relaxed">Each of these categories demands different tools and different alert thresholds. A DBA who only monitors query performance will be blindsided by a full disk. A DBA who only monitors availability will miss the slow degradation of query plans over time.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Core Metrics: What PostgreSQL and SQL Server Expose</h3>
+
+<p class="text-gray-300 leading-relaxed">Both database engines expose a rich set of internal metrics through system views and dynamic management views. Understanding what is available — and what each metric actually means — is the foundation of effective monitoring.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL System Catalog and Statistics Views</strong></p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL exposes runtime statistics through the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_*</code> family of views. These are populated by the statistics collector, a background process that tracks activity across the instance. The most important views for day-to-day monitoring include:</p>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `pg_stat_activity` — active connections, their state, what query they are running, and how long they have been waiting</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `pg_stat_bgwriter` — background writer and checkpoint activity</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `pg_stat_database` — per-database transaction counts, cache hit ratios, and deadlocks</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `pg_stat_user_tables` — table-level statistics including dead tuple counts, which are essential for tracking bloat</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `pg_stat_user_indexes` — index usage statistics</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `pg_locks` — current lock activity, essential for diagnosing blocking chains</li>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server Dynamic Management Views</strong></p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server exposes runtime information through Dynamic Management Views (DMVs) in the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys</code> schema. Key DMVs for monitoring include:</p>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `sys.dm_exec_requests` — currently executing requests, their wait types, CPU time, and elapsed time</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `sys.dm_exec_sessions` — all connected sessions with authentication and resource usage</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `sys.dm_os_wait_stats` — cumulative wait statistics since the last SQL Server restart</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `sys.dm_db_index_usage_stats` — index seeks, scans, and lookups since last restart</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `sys.dm_io_virtual_file_stats` — file-level I/O statistics</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `sys.dm_exec_query_stats` — aggregated performance statistics for cached query plans</li>
+
+<p class="text-gray-300 leading-relaxed">Let's look at the two most foundational monitoring queries: checking active sessions and connection counts.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Active connections grouped by state and database
+SELECT
+    datname,
+    state,
+    COUNT(*) AS connection_count,
+    MAX(EXTRACT(EPOCH FROM (NOW() - state_change))) AS longest_in_state_seconds
+FROM pg_stat_activity
+WHERE pid &lt;&gt; pg_backend_pid()
+GROUP BY datname, state
+ORDER BY connection_count DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Active connections grouped by status and database
+SELECT
+    DB_NAME(s.database_id)      AS database_name,
+    s.status,
+    COUNT(*)                    AS connection_count,
+    MAX(DATEDIFF(SECOND, s.last_request_start_time, GETDATE())) AS longest_in_state_seconds
+FROM sys.dm_exec_sessions s
+WHERE s.is_user_process = 1
+GROUP BY s.database_id, s.status
+ORDER BY connection_count DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Connection monitoring is often the first thing that reveals an application problem. A sudden spike in idle-in-transaction connections in PostgreSQL, or a surge of suspended sessions in SQL Server, almost always indicates a lock contention issue or a misbehaving application that is not committing or closing transactions properly.</p>
+
+<p class="text-gray-300 leading-relaxed">Cache hit ratio is another foundational metric. When the buffer cache hit ratio drops significantly, it usually means the working set no longer fits in memory, and you are experiencing increased physical I/O.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Buffer cache hit ratio per database
+SELECT
+    datname,
+    blks_hit,
+    blks_read,
+    ROUND(
+        blks_hit::NUMERIC / NULLIF(blks_hit + blks_read, 0) * 100,
+        2
+    ) AS cache_hit_pct
+FROM pg_stat_database
+WHERE datname NOT IN ('template0', 'template1')
+ORDER BY cache_hit_pct ASC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Buffer cache hit ratio from performance counters
+SELECT
+    object_name,
+    counter_name,
+    ROUND(cntr_value, 2) AS cache_hit_pct
+FROM sys.dm_os_performance_counters
+WHERE counter_name = 'Buffer cache hit ratio'
+  AND object_name LIKE '%Buffer Manager%';</code></pre>
+
+<p class="text-gray-300 leading-relaxed">A healthy PostgreSQL buffer cache hit ratio should be above 98–99% for an OLTP workload with a properly sized <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">shared_buffers</code>. In SQL Server, a Buffer Cache Hit Ratio below 95% on a production OLTP system is worth investigating.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Identifying Blocking, Long-Running Queries, and Waits</h3>
+
+<p class="text-gray-300 leading-relaxed">Blocking is one of the most common causes of user-visible slowness in relational databases. When one session holds a lock and another session is waiting for that same lock, the waiting session is blocked. If enough sessions accumulate in this state, the application becomes unresponsive — even though the database is technically "up."</p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, blocking appears through <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_locks</code> joined with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_activity</code>. In SQL Server, blocking is exposed through <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_requests</code> and the dedicated <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_os_waiting_tasks</code> DMV.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Blocking chains: who is blocking whom
+SELECT
+    blocked.pid                    AS blocked_pid,
+    blocked.query                  AS blocked_query,
+    blocked.state                  AS blocked_state,
+    EXTRACT(EPOCH FROM NOW() - blocked.query_start)::INT AS wait_seconds,
+    blocking.pid                   AS blocking_pid,
+    blocking.query                 AS blocking_query,
+    blocking.state                 AS blocking_state
+FROM pg_stat_activity AS blocked
+JOIN pg_locks         AS bl  ON bl.pid = blocked.pid AND NOT bl.granted
+JOIN pg_locks         AS kl  ON kl.transactionid = bl.transactionid AND kl.granted
+JOIN pg_stat_activity AS blocking ON blocking.pid = kl.pid
+WHERE blocked.pid &lt;&gt; blocking.pid
+ORDER BY wait_seconds DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Blocking chains with head blocker and wait type
+SELECT
+    r.session_id                        AS blocked_session,
+    r.blocking_session_id               AS blocking_session,
+    r.wait_type,
+    r.wait_time / 1000                  AS wait_seconds,
+    SUBSTRING(st.text, (r.statement_start_offset / 2) + 1,
+        ((CASE r.statement_end_offset
+            WHEN -1 THEN DATALENGTH(st.text)
+            ELSE r.statement_end_offset END
+          - r.statement_start_offset) / 2) + 1) AS blocked_query,
+    DB_NAME(r.database_id)              AS database_name
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) st
+WHERE r.blocking_session_id &gt; 0
+ORDER BY r.wait_time DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Wait statistics provide a higher-level view of where time is being spent across the entire instance. Rather than looking at individual sessions, wait stats tell you what *type* of resource the database is waiting on the most — disk I/O, CPU, network, locks, or memory.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_os_wait_stats</code> is the primary source. The catch is that it accumulates since the last restart or last reset, so you need to either take delta snapshots or normalize by elapsed time to get meaningful trending data. Common wait types to watch include <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">PAGEIOLATCH_SH</code> (disk read bottleneck), <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">LCK_M_*</code> (lock waits), <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">CXPACKET</code> (parallelism), and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ASYNC_NETWORK_IO</code> (slow clients or network).</p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_activity</code> shows per-session wait events through the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">wait_event_type</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">wait_event</code> columns. There is no cumulative wait stats view equivalent to SQL Server's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">dm_os_wait_stats</code> in vanilla PostgreSQL, though extensions like <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_wait_sampling</code> can be added to capture this data over time.</p>
+
+<p class="text-gray-300 leading-relaxed">Long-running queries are another category that demands attention. A query running for more than a few minutes in an OLTP system is almost always a problem — either a rogue report running against production, a bulk operation without batching, or a deadlock that has not yet been detected.</p>
+
+<p class="text-gray-300 leading-relaxed">Monitoring for long-running queries should be part of your baseline automation, run every few minutes, and alert when thresholds are exceeded.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Table Bloat, Autovacuum, and Maintenance Monitoring in PostgreSQL</h3>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL has a unique maintenance concern that SQL Server DBAs moving to Postgres often underestimate: table and index bloat caused by its MVCC implementation. When rows are updated or deleted in PostgreSQL, the old row versions are not immediately removed. They become "dead tuples" — invisible to new transactions but still occupying physical space on disk. The autovacuum daemon is responsible for cleaning these up, but it can fall behind on high-write tables, and when it does, the consequences include bloated tables, wasted disk space, degraded query performance, and eventually — on old enough transactions — transaction ID wraparound, which can take a database offline.</p>
+
+<p class="text-gray-300 leading-relaxed">Monitoring dead tuple accumulation and autovacuum activity is therefore not optional in PostgreSQL — it is a core DBA responsibility.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Tables with high dead tuple ratios — bloat candidates
+SELECT
+    schemaname,
+    relname                                              AS table_name,
+    n_live_tup,
+    n_dead_tup,
+    ROUND(n_dead_tup::NUMERIC / NULLIF(n_live_tup + n_dead_tup, 0) * 100, 2)
+                                                         AS dead_tuple_pct,
+    last_autovacuum,
+    last_autoanalyze,
+    autovacuum_count
+FROM pg_stat_user_tables
+WHERE n_live_tup + n_dead_tup &gt; 1000
+ORDER BY dead_tuple_pct DESC
+LIMIT 20;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">A dead tuple percentage above 10–20% on a heavily queried table is a signal that autovacuum is not keeping up. This could be because the table's autovacuum settings need tuning, because the autovacuum daemon is overloaded, or because there is a long-running transaction holding back the xmin horizon and preventing cleanup from proceeding.</p>
+
+<p class="text-gray-300 leading-relaxed">Transaction ID wraparound is the most serious autovacuum-related risk. PostgreSQL uses 32-bit transaction IDs, and when the age of a table's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">relfrozenxid</code> approaches 2 billion, the database will begin refusing new writes to protect data integrity — a forced shutdown that requires manual intervention.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- PostgreSQL: Monitor transaction ID age — alert if approaching limits
+SELECT
+    datname,
+    age(datfrozenxid)                        AS xid_age,
+    2000000000 - age(datfrozenxid)           AS xids_remaining,
+    ROUND(age(datfrozenxid)::NUMERIC / 2000000000 * 100, 2)
+                                             AS pct_toward_wraparound
+FROM pg_database
+ORDER BY xid_age DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Alert when <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">xid_age</code> exceeds 1.5 billion. At that point you need to schedule a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VACUUM FREEZE</code> on the affected tables immediately. Most production PostgreSQL deployments set alert thresholds much earlier — around 500 million or 1 billion — to give enough lead time.</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server does not have an equivalent of autovacuum or MVCC dead tuples, but it does require monitoring for index fragmentation, which degrades over time as rows are inserted and updated:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server: Index fragmentation for tables with &gt;1000 pages
+SELECT
+    OBJECT_NAME(ips.object_id)              AS table_name,
+    i.name                                  AS index_name,
+    ips.index_type_desc,
+    ROUND(ips.avg_fragmentation_in_percent, 2) AS fragmentation_pct,
+    ips.page_count
+FROM sys.dm_db_index_physical_stats(
+         DB_ID(), NULL, NULL, NULL, 'LIMITED') ips
+JOIN sys.indexes i
+    ON i.object_id = ips.object_id
+   AND i.index_id  = ips.index_id
+WHERE ips.page_count &gt; 1000
+  AND ips.avg_fragmentation_in_percent &gt; 10
+ORDER BY fragmentation_pct DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">General convention: rebuild indexes above 30% fragmentation, reorganize indexes between 10% and 30%, and leave indexes below 10% alone. This query forms the basis of an automated index maintenance job.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Building Alerts That Are Useful, Not Noisy</h3>
+
+<p class="text-gray-300 leading-relaxed">The goal of an alert is to notify the right person about the right problem with enough context to act. Poorly designed alerts destroy their own value. If an alert fires constantly for minor fluctuations, the team starts ignoring it — a dangerous situation called "alert fatigue." If thresholds are set too conservatively, real problems go unreported. Getting this right requires thought about what each metric actually means in context, what normal looks like, and what constitutes a real emergency versus a transient blip.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Alert Design Principles</strong></p>
+
+<p class="text-gray-300 leading-relaxed">*Threshold awareness* — Not every metric has a universal threshold. A cache hit ratio of 96% might be completely acceptable in a read-intensive analytics workload that regularly scans large portions of disk, while the same ratio would be alarming for a highly optimized OLTP system. Set thresholds based on your specific system's baseline, not on generic internet benchmarks.</p>
+
+<p class="text-gray-300 leading-relaxed">*Duration-based triggering* — Alert on sustained conditions, not instantaneous ones. If CPU spikes to 90% for 10 seconds during an autovacuum run, that is not worth waking someone up. If CPU is at 90% for 5 consecutive minutes, that is worth knowing about. Build alerts to require a condition to persist over multiple collection intervals before firing.</p>
+
+<p class="text-gray-300 leading-relaxed">*Severity tiering* — Not every problem is a P1 incident. Define tiers: informational (log it, review weekly), warning (Slack notification, review within a few hours), critical (PagerDuty, wake someone up). A disk at 80% full might be a warning; a disk at 95% full is critical.</p>
+
+<p class="text-gray-300 leading-relaxed">*Alert on trends, not just thresholds* — A disk that goes from 60% to 85% full over 24 hours is more urgent than one that has been sitting at 82% for six months. Rate-of-change alerting catches problems before they breach absolute thresholds.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Common Alert Scenarios and Their Recommended Thresholds</strong></p>
+
+<p class="text-gray-300 leading-relaxed">| Metric | Warning | Critical |</p>
+<p class="text-gray-300 leading-relaxed">|---|---|---|</p>
+<p class="text-gray-300 leading-relaxed">| Disk usage | 80% | 90% |</p>
+<p class="text-gray-300 leading-relaxed">| Connection usage (vs. max) | 75% | 90% |</p>
+<p class="text-gray-300 leading-relaxed">| Cache hit ratio (OLTP) | < 98% | < 95% |</p>
+<p class="text-gray-300 leading-relaxed">| Long-running query | > 5 min | > 15 min |</p>
+<p class="text-gray-300 leading-relaxed">| Blocked sessions | Any block > 1 min | Block chain > 5 sessions |</p>
+<p class="text-gray-300 leading-relaxed">| Replication lag | > 30 seconds | > 5 minutes |</p>
+<p class="text-gray-300 leading-relaxed">| XID age (PostgreSQL) | > 500M | > 1.5B |</p>
+<p class="text-gray-300 leading-relaxed">| Autovacuum failures | Any | Any |</p>
+<p class="text-gray-300 leading-relaxed">| Backup age | > 24 hours | > 48 hours |</p>
+
+<p class="text-gray-300 leading-relaxed">The backup age alert deserves special mention. A backup that has not run in 48 hours is a serious operational risk, but many teams do not monitor this at all until they need to restore something. Build a simple check: query your backup history and alert if the most recent successful backup is older than your defined RPO.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check age of last successful pg_basebackup or pgBackRest backup
+-- In environments using a backup log table:
+SELECT
+    backup_type,
+    MAX(completed_at)                        AS last_success,
+    EXTRACT(EPOCH FROM NOW() - MAX(completed_at)) / 3600
+                                             AS hours_since_last_backup
+FROM dba_backup_log
+WHERE status = 'SUCCESS'
+GROUP BY backup_type
+ORDER BY hours_since_last_backup DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Age of most recent successful backup per database and type
+SELECT
+    bs.database_name,
+    bs.type                                  AS backup_type,
+    MAX(bs.backup_finish_date)               AS last_success,
+    DATEDIFF(HOUR, MAX(bs.backup_finish_date), GETDATE())
+                                             AS hours_since_last_backup
+FROM msdb.dbo.backupset bs
+GROUP BY bs.database_name, bs.type
+HAVING DATEDIFF(HOUR, MAX(bs.backup_finish_date), GETDATE()) &gt; 24
+ORDER BY hours_since_last_backup DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Building a Monitoring Infrastructure: Tools, Automation, and Dashboards</h3>
+
+<p class="text-gray-300 leading-relaxed">Individual queries are useful for ad hoc investigation, but production monitoring requires infrastructure that collects data continuously, stores it historically, visualizes trends, and delivers alerts automatically. No DBA can — or should — manually run monitoring queries every few minutes around the clock.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Open Source and Community Tools</strong></p>
+
+<p class="text-gray-300 leading-relaxed">For PostgreSQL, <strong class="text-white">pgBadger</strong> parses log files and produces detailed HTML reports on slow queries, lock waits, and connection patterns. It is excellent for after-the-fact analysis but does not provide real-time monitoring. <strong class="text-white">pg_activity</strong> is a top-like tool for watching live PostgreSQL activity from the command line. For more comprehensive monitoring, <strong class="text-white">Prometheus with postgres_exporter</strong> has become the dominant open-source stack: postgres_exporter scrapes <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_*</code> views on a configurable interval, exposes metrics in Prometheus format, and feeds into <strong class="text-white">Grafana</strong> dashboards for visualization and alerting. Community-built Grafana dashboards for PostgreSQL are available on grafana.com and provide an excellent starting point.</p>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server, <strong class="text-white">SQL Server Management Studio (SSMS)</strong> includes Activity Monitor for real-time session viewing. <strong class="text-white">sp_WhoIsActive</strong>, written by Adam Machanic and freely available, is the community-standard stored procedure for real-time session analysis — far more useful than the built-in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sp_who2</code>. For longer-term collection, <strong class="text-white">SQL Server's built-in Performance Data Collector</strong> or third-party tools like <strong class="text-white">SolarWinds DPA</strong>, <strong class="text-white">SentryOne/SQL Sentry</strong>, and <strong class="text-white">Redgate SQL Monitor</strong> provide enterprise-grade historical monitoring. For teams running SQL Server in cloud environments, Azure Monitor and the built-in Query Performance Insight in Azure SQL Database provide native monitoring without additional tooling.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Query Store in SQL Server</strong></p>
+
+<p class="text-gray-300 leading-relaxed">Query Store, available since SQL Server 2016, is one of the most valuable built-in monitoring features in the platform. It automatically captures query plans and runtime statistics over time, allowing you to compare plan performance across time periods, identify plan regressions, and force specific execution plans when a regression occurs. Enable Query Store on every production database:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server: Enable Query Store with appropriate retention settings
+ALTER DATABASE YourDatabase
+SET QUERY_STORE = ON (
+    OPERATION_MODE        = READ_WRITE,
+    CLEANUP_POLICY        = (STALE_QUERY_THRESHOLD_DAYS = 30),
+    DATA_FLUSH_INTERVAL_SECONDS = 900,
+    INTERVAL_LENGTH_MINUTES     = 60,
+    MAX_STORAGE_SIZE_MB         = 1024,
+    QUERY_CAPTURE_MODE          = AUTO
+);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Once enabled, Query Store surfaces plan regressions through its built-in reports in SSMS, or you can query it directly through <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.query_store_*</code> views.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">pg_stat_statements in PostgreSQL</strong></p>
+
+<p class="text-gray-300 leading-relaxed">The equivalent in PostgreSQL is the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_statements</code> extension, which must be explicitly enabled. Once loaded, it aggregates performance statistics for every unique query shape that passes through the instance — total calls, mean execution time, total I/O, and variance in execution time.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- PostgreSQL: Top 10 queries by total execution time
+SELECT
+    LEFT(query, 100)                          AS query_snippet,
+    calls,
+    ROUND(total_exec_time::NUMERIC, 2)        AS total_ms,
+    ROUND(mean_exec_time::NUMERIC, 2)         AS avg_ms,
+    ROUND(stddev_exec_time::NUMERIC, 2)       AS stddev_ms,
+    rows
+FROM pg_stat_statements
+ORDER BY total_exec_time DESC
+LIMIT 10;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Queries with a high <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">stddev_ms</code> relative to <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">mean_exec_time</code> are candidates for investigation — the high variance indicates that the query performs very differently across executions, which often points to plan instability, parameter sniffing effects, or lock waits intermittently inflating runtime.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Automated Alerting with Scripts and Jobs</strong></p>
+
+<p class="text-gray-300 leading-relaxed">Not every team has budget for enterprise monitoring tools. A pragmatic alternative is to build lightweight alert scripts that run on a schedule. These scripts query the monitoring views, evaluate thresholds, and send notifications via email, Slack webhooks, or PagerDuty APIs when conditions are met.</p>
+
+<p class="text-gray-300 leading-relaxed">A typical structure for a PostgreSQL monitoring script might be a Python or bash script that connects via <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">psql</code>, runs a set of diagnostic queries, compares results to hardcoded or config-file-defined thresholds, and posts to a Slack webhook if any threshold is breached. The script runs every 5 minutes via cron. This approach is low-cost, transparent, and entirely under your control.</p>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server, SQL Agent jobs can run T-SQL alert procedures on a schedule. These procedures query DMVs, check thresholds, and use <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">msdb.dbo.sp_send_dbmail</code> to fire email alerts. SQL Agent provides built-in alerting for SQL Server Agent jobs, error log events, and performance condition alerts — a feature set that is often underused.</p>
+
+<p class="text-gray-300 leading-relaxed">Regardless of which tools you use, the monitoring data is only valuable if it is *retained*. Time-series data that is deleted after 24 hours cannot help you debug why last Tuesday's batch job took three times longer than usual. Plan your retention: high-resolution metrics (every 30 seconds) for 7 days, rolled up to 1-minute averages for 30 days, and hourly aggregates for 1 year. This gives you both recent detail and long-term trend visibility without consuming excessive storage.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Key Takeaways</h3>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Monitoring covers four pillars — availability, performance, capacity, and correctness — and gaps in any one of them create blind spots that lead to preventable incidents.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Both PostgreSQL and SQL Server expose rich internal metrics through system views and DMVs; the `pg_stat_*` family in PostgreSQL and the `sys.dm_*` DMV family in SQL Server are your primary data sources for everything from connection counts to query performance.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Blocking and long-running queries are the most common causes of user-visible database slowness; monitoring for them in real time, with clear escalation</li>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
