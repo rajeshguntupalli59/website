@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The 7 most expensive SQL mistakes DBAs see every day — Rajesh Guntupalli</title>
+  <meta name="description" content="Real anti-patterns that destroy query performance — SELECT *, implicit cross joins, functions on indexed columns, and more." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Buy QueryOptimizer</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="flex gap-2 mb-5"><span class="px-2 py-0.5 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full">PostgreSQL</span><span class="px-2 py-0.5 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full">SQL Server</span><span class="px-2 py-0.5 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full">Performance</span></div>
+    <h1 class="text-4xl font-extrabold mb-4 leading-tight">The 7 most expensive SQL mistakes DBAs see every day</h1>
+    <div class="flex items-center gap-3 text-xs text-gray-500 mb-10 pb-8 border-b border-gray-800/60">
+      <span>Rajesh Guntupalli</span><span>·</span><span>May 2026</span><span>·</span><span>5 min read</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<p class="text-gray-300 leading-relaxed"># The 7 Most Expensive SQL Mistakes DBAs See Every Day</p>
+
+<p class="text-gray-300 leading-relaxed">*By Rajesh Guntupalli*</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<p class="text-gray-300 leading-relaxed">After years of tuning queries across PostgreSQL and SQL Server environments, I keep seeing the same mistakes. Not obscure edge cases — the same anti-patterns, over and over, written by developers who genuinely don't know they're torching performance. Some of these can take a query from 200ms to 45 seconds. I've seen it happen in production.</p>
+
+<p class="text-gray-300 leading-relaxed">Here are the seven that cost teams the most.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h2 class="text-xl font-bold text-white mt-10 mb-4">1. SELECT * in Production Queries</h2>
+
+<p class="text-gray-300 leading-relaxed">Everyone knows this is bad. Almost nobody fixes it.</p>
+
+<p class="text-gray-300 leading-relaxed"><code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SELECT *</code> forces the engine to read every column, blows up your network transfer, prevents index-only scans, and breaks silently when schema changes. On a table with 40 columns and 10 million rows, you might be pulling 8GB of data when you only needed 3 columns.</p>
+
+<p class="text-gray-300 leading-relaxed">Fix it. Always name your columns.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h2 class="text-xl font-bold text-white mt-10 mb-4">2. Functions on Indexed Columns in WHERE Clauses</h2>
+
+<p class="text-gray-300 leading-relaxed">This one kills indexes silently. If you wrap an indexed column in a function, the index is useless.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- BAD: Full table scan, index on created_at is ignored
+SELECT order_id, total
+FROM orders
+WHERE YEAR(created_at) = 2024;
+
+-- GOOD: Index on created_at is used
+SELECT order_id, total
+FROM orders
+WHERE created_at &gt;= '2024-01-01'
+  AND created_at &lt; '2025-01-01';</code></pre>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, the same problem shows up with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">LOWER()</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">DATE()</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">TO_CHAR()</code>. The optimizer can't use a B-tree index on <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">email</code> if you're querying <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">WHERE LOWER(email) = 'test@example.com'</code>. Use a functional index or fix the data at write time.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h2 class="text-xl font-bold text-white mt-10 mb-4">3. Implicit Cross Joins from Missing JOIN Conditions</h2>
+
+<p class="text-gray-300 leading-relaxed">This one is a production killer. One missing <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ON</code> clause and you have a Cartesian product.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- BAD: Returns customers * orders rows (accidental cross join)
+SELECT c.name, o.total
+FROM customers c, orders o
+WHERE c.region = 'US';
+
+-- GOOD: Explicit JOIN with proper condition
+SELECT c.name, o.total
+FROM customers c
+INNER JOIN orders o ON o.customer_id = c.customer_id
+WHERE c.region = 'US';</code></pre>
+
+<p class="text-gray-300 leading-relaxed">I once investigated a SQL Server query running for 20 minutes. A developer had added a second table to the FROM clause and forgot to add the join condition. The result set was 4.2 billion rows. The old-style comma-separated FROM syntax makes this far too easy to miss.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h2 class="text-xl font-bold text-white mt-10 mb-4">4. N+1 Queries from Application Code</h2>
+
+<p class="text-gray-300 leading-relaxed">This isn't just an ORM problem. I see raw SQL loops in stored procedures and application code constantly.</p>
+
+<p class="text-gray-300 leading-relaxed">If your application runs one query to fetch 500 orders, then runs 500 individual queries to fetch the customer for each one — that's N+1. Replace it with a single JOIN or a batch <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">IN ()</code> clause. On a remote database with 5ms round-trip latency, that's 2.5 seconds of pure network waste per request.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h2 class="text-xl font-bold text-white mt-10 mb-4">5. Missing Indexes on Foreign Keys</h2>
+
+<p class="text-gray-300 leading-relaxed">SQL Server doesn't automatically index foreign key columns. PostgreSQL doesn't either. If you're joining on <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">orders.customer_id</code> and there's no index on that column, every join is a sequential scan.</p>
+
+<p class="text-gray-300 leading-relaxed">Run this in PostgreSQL to find foreign keys without indexes:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>SELECT
+    tc.table_name,
+    kcu.column_name,
+    ccu.table_name AS foreign_table
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+    ON tc.constraint_name = kcu.constraint_name
+JOIN information_schema.referential_constraints rc
+    ON tc.constraint_name = rc.constraint_name
+JOIN information_schema.key_column_usage ccu
+    ON rc.unique_constraint_name = ccu.constraint_name
+WHERE tc.constraint_type = 'FOREIGN KEY'
+  AND NOT EXISTS (
+    SELECT 1 FROM pg_indexes
+    WHERE tablename = tc.table_name
+      AND indexdef LIKE '%' || kcu.column_name || '%'
+  );</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Run this on any legacy schema and you'll usually find at least a few unindexed foreign keys.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h2 class="text-xl font-bold text-white mt-10 mb-4">6. Using OR Instead of UNION for Index Utilization</h2>
+
+<p class="text-gray-300 leading-relaxed">In many cases, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">OR</code> across different columns prevents the optimizer from using indexes effectively. Splitting into <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">UNION ALL</code> lets each branch use its own index.</p>
+
+<p class="text-gray-300 leading-relaxed">If you have indexes on both <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">email</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">phone</code>, a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">WHERE email = ? OR phone = ?</code> query may degrade to a full scan. A <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">UNION ALL</code> of two targeted queries often runs 3–10x faster on large tables.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h2 class="text-xl font-bold text-white mt-10 mb-4">7. Ignoring Query Plan Warnings</h2>
+
+<p class="text-gray-300 leading-relaxed">Both PostgreSQL and SQL Server surface warnings directly in execution plans — implicit conversions, missing statistics, spills to disk. Most developers never look at the plan. They see that the query "works" and move on.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, look for yellow warning triangles in the graphical plan. In PostgreSQL, run <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">EXPLAIN (ANALYZE, BUFFERS)</code> and look for high <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">Buffers: shared hit</code> numbers, sequential scans on large tables, or nested loop joins on large result sets. These are the plan telling you exactly where the problem is.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Closing Thoughts</h2>
+
+<p class="text-gray-300 leading-relaxed">Most query performance problems aren't mysterious. They're the same mistakes, reproduced at scale. The challenge is catching them before they hit production — or diagnosing them quickly when they do.</p>
+
+<p class="text-gray-300 leading-relaxed">Lately I've been using [QueryOptimizer](https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686), a self-hosted SQL performance workbench I built to surface exactly these kinds of issues. It analyzes query plans, flags anti-patterns, and gives you specific rewrite suggestions — all running locally on your own machine, no SaaS required. One-time $149 if you want to check it out.</p>
+
+<p class="text-gray-300 leading-relaxed">But even without tooling, just knowing these seven patterns and reviewing plans regularly will put you ahead of most teams I work with.</p>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8"><a href="index.html" class="text-xs text-gray-500 hover:text-gray-300 transition">← Back to all articles</a></div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli</div>
+  </footer>
+</body>
+</html>
