@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 26: Event-Driven Design — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 26: Event-Driven Design. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 26 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 26: Event-Driven Design</h2>
+
+<p class="text-gray-300 leading-relaxed">Modern applications rarely operate in isolation. A user places an order, and a warehouse system needs to know. A payment clears, and a notification service fires. A record changes in one table, and three downstream consumers need to react. This chapter is about how databases fit into that world — how PostgreSQL and SQL Server can both participate in event-driven architectures, either as producers that emit events when data changes or as consumers that process event streams. We'll cover the mechanisms each platform provides natively, how to build reliable event pipelines on top of them, and where the edge cases and failure modes live in production systems that depend on this pattern.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">What Event-Driven Architecture Means for a Database</h3>
+
+<p class="text-gray-300 leading-relaxed">Event-driven design is a pattern where systems communicate through discrete, timestamped facts about things that happened. Rather than one service querying another for current state ("what is the balance?"), services react to events ("the balance changed"). The database is almost always at the center of this, because the database is where state lives and where changes are authoritative.</p>
+
+<p class="text-gray-300 leading-relaxed">For a DBA, event-driven architecture introduces a category of questions that don't arise in request/response systems. How do you guarantee an event is emitted if and only if the underlying data change commits? How do you ensure events are delivered in order? What happens when a consumer is offline for two hours? How do you avoid the dual-write problem, where you write to a database and then try to write to a message queue, and one of those writes fails?</p>
+
+<p class="text-gray-300 leading-relaxed">The canonical answer to the dual-write problem is the <strong class="text-white">Transactional Outbox Pattern</strong>: instead of writing directly to an external message broker, you write an event record into a table within the same transaction as your business data change. A separate process then reads from that outbox table and forwards events onward. If the process crashes, it can replay from where it left off. The event is guaranteed to exist if and only if the business transaction committed — atomicity is preserved because both writes happen in the same transaction.</p>
+
+<p class="text-gray-300 leading-relaxed">This concept is straightforward, but the implementation details determine whether it works in production. Let's walk through how it works structurally, and then we'll look at the native mechanisms both PostgreSQL and SQL Server provide that build on or replace it.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">The Transactional Outbox Pattern in Practice</h3>
+
+<p class="text-gray-300 leading-relaxed">The outbox table is simple by design. It holds event payloads alongside enough metadata for a processor to understand ordering, type, and delivery status.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- PostgreSQL outbox table
+CREATE TABLE event_outbox (
+    id            BIGSERIAL PRIMARY KEY,
+    aggregate_id  TEXT        NOT NULL,
+    aggregate_type TEXT       NOT NULL,
+    event_type    TEXT        NOT NULL,
+    payload       JSONB       NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    processed_at  TIMESTAMPTZ,
+    retry_count   INT         NOT NULL DEFAULT 0
+);
+
+CREATE INDEX idx_outbox_unprocessed
+    ON event_outbox (created_at)
+    WHERE processed_at IS NULL;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server outbox table
+CREATE TABLE event_outbox (
+    id             BIGINT IDENTITY(1,1) PRIMARY KEY,
+    aggregate_id   NVARCHAR(255)  NOT NULL,
+    aggregate_type NVARCHAR(255)  NOT NULL,
+    event_type     NVARCHAR(255)  NOT NULL,
+    payload        NVARCHAR(MAX)  NOT NULL,  -- store JSON as NVARCHAR(MAX)
+    created_at     DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+    processed_at   DATETIMEOFFSET NULL,
+    retry_count    INT            NOT NULL DEFAULT 0
+);
+
+CREATE INDEX idx_outbox_unprocessed
+    ON event_outbox (created_at)
+    WHERE processed_at IS NULL;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Within application code, the business insert and the outbox insert share a transaction:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- PostgreSQL: atomic business write + event emission
+BEGIN;
+
+INSERT INTO orders (customer_id, total_amount, status)
+VALUES ($1, $2, 'pending')
+RETURNING id INTO TEMP TABLE new_order;
+
+INSERT INTO event_outbox (aggregate_id, aggregate_type, event_type, payload)
+SELECT
+    id::TEXT,
+    'Order',
+    'OrderPlaced',
+    jsonb_build_object(
+        'order_id',     id,
+        'customer_id',  $1,
+        'total_amount', $2,
+        'occurred_at',  NOW()
+    )
+FROM new_order;
+
+COMMIT;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server: atomic business write + event emission
+BEGIN TRANSACTION;
+
+DECLARE @new_order_id BIGINT;
+
+INSERT INTO orders (customer_id, total_amount, status)
+VALUES (@customer_id, @total_amount, 'pending');
+
+SET @new_order_id = SCOPE_IDENTITY();
+
+INSERT INTO event_outbox (aggregate_id, aggregate_type, event_type, payload)
+VALUES (
+    CAST(@new_order_id AS NVARCHAR(255)),
+    'Order',
+    'OrderPlaced',
+    (SELECT
+        @new_order_id  AS order_id,
+        @customer_id   AS customer_id,
+        @total_amount  AS total_amount,
+        SYSDATETIMEOFFSET() AS occurred_at
+     FOR JSON PATH, WITHOUT_ARRAY_WRAPPER)
+);
+
+COMMIT TRANSACTION;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The outbox relay process — whether it's a scheduled job, a dedicated microservice, or a database agent job — polls for unprocessed rows, forwards them to a broker like Kafka or RabbitMQ, and marks them processed. The relay must be idempotent: if it crashes between forwarding and marking, it will re-read the same row on restart. Downstream consumers therefore need to handle duplicate events, which is a design constraint worth communicating explicitly to application teams.</p>
+
+<p class="text-gray-300 leading-relaxed">The partial index on <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">processed_at IS NULL</code> is not cosmetic. In a high-volume system, the outbox table can accumulate millions of rows. A full table scan on every relay cycle would quickly become a bottleneck. The partial index keeps the relay query fast because it only ever needs to see unprocessed rows — the rest are invisible to it.</p>
+
+<p class="text-gray-300 leading-relaxed">One production concern that catches teams off guard: old processed rows accumulate indefinitely. You need a background archival or deletion job, or the table grows without bound and the partial index stops fitting in memory. The relay job should also enforce a maximum batch size so it doesn't lock large sets of rows during marking.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Change Data Capture: Letting the Database Emit Events Natively</h3>
+
+<p class="text-gray-300 leading-relaxed">Writing events from application code is reliable when applications are disciplined. It breaks down when data is modified through migration scripts, bulk imports, administrative tools, or legacy code paths that bypass the event-writing logic. The more durable solution is to have the database itself emit events for every data change, regardless of source. This is Change Data Capture — CDC.</p>
+
+<p class="text-gray-300 leading-relaxed">Both PostgreSQL and SQL Server implement CDC by reading the transaction log rather than polling tables. The log is the most faithful record of what changed and when, and it imposes almost no overhead on the primary write path.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL Logical Replication and Logical Decoding</strong></p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL exposes its write-ahead log (WAL) for consumption through logical decoding. The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_logical</code> replication slot mechanism lets an external process subscribe to a decoded stream of row-level changes. The popular open-source tool Debezium uses this mechanism to forward changes into Kafka, but you can also consume the stream directly using PostgreSQL's built-in replication protocol.</p>
+
+<p class="text-gray-300 leading-relaxed">To use logical decoding, the server must have <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">wal_level = logical</code> set in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">postgresql.conf</code>. This is now the default in PostgreSQL 15 and above.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- PostgreSQL: create a logical replication slot using the pgoutput plugin
+SELECT pg_create_logical_replication_slot(
+    'orders_cdc_slot',
+    'pgoutput'
+);
+
+-- Peek at changes without advancing the slot (useful for testing)
+SELECT *
+FROM pg_logical_slot_peek_changes(
+    'orders_cdc_slot',
+    NULL,
+    NULL,
+    'proto_version', '1',
+    'publication_names', 'orders_publication'
+);
+
+-- Create a publication for specific tables
+CREATE PUBLICATION orders_publication
+FOR TABLE orders, order_items;
+
+-- Check slot lag — critical for monitoring
+SELECT
+    slot_name,
+    database,
+    active,
+    pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn) AS lag_bytes
+FROM pg_replication_slots;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Slot lag is the single most important metric in any logical replication setup. When a consumer falls behind, the WAL files it hasn't yet processed cannot be deleted. Unchecked slot lag can fill your disk and crash the primary. Every production deployment using logical replication slots should alert when lag exceeds a threshold — typically a few hundred megabytes in a busy system — and should drop the slot if the consumer has been absent for more than a few hours.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server Change Data Capture</strong></p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server's CDC feature captures changes to specified tables by reading the transaction log and writing them into a set of system-maintained change tables. It's enabled at the database level and then per table.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server: enable CDC on the database
+EXEC sys.sp_cdc_enable_db;
+
+-- Enable CDC on a specific table
+EXEC sys.sp_cdc_enable_table
+    @source_schema      = N'dbo',
+    @source_name        = N'orders',
+    @role_name          = N'cdc_reader',   -- security role for access
+    @supports_net_changes = 1;             -- 1 = expose net changes per key
+
+-- Query captured changes between two LSN values
+DECLARE @from_lsn BINARY(10), @to_lsn BINARY(10);
+
+SET @from_lsn = sys.fn_cdc_get_min_lsn('dbo_orders');
+SET @to_lsn   = sys.fn_cdc_get_max_lsn();
+
+SELECT
+    __$operation,          -- 1=delete, 2=insert, 3=before-update, 4=after-update
+    __$start_lsn,
+    __$seqval,
+    id,
+    customer_id,
+    total_amount,
+    status
+FROM cdc.fn_cdc_get_all_changes_dbo_orders(
+    @from_lsn, @to_lsn, 'all'
+);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">__$operation</code> column is the key to understanding what type of change occurred. Updates appear as two rows: the before-image (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">__$operation = 3</code>) and the after-image (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">__$operation = 4</code>). If your consumer only needs the current state, filter for inserts (2) and after-update images (4), and treat deletes (1) as tombstone events.</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server CDC depends on SQL Server Agent to run the capture and cleanup jobs. If Agent is stopped, change data accumulates in the transaction log and the change tables stop being populated. This is a common operational oversight — teams enable CDC and forget to monitor Agent health.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">What CDC Does Not Give You</strong></p>
+
+<p class="text-gray-300 leading-relaxed">CDC provides the what and when of data changes, but it doesn't provide business context. A CDC event says "a row in the orders table changed" — it doesn't say "an order was placed" versus "an order was cancelled" versus "a shipping address was corrected." For event-driven systems where consumers care about semantic meaning, CDC events often need to be enriched or translated into domain events before being published. The outbox pattern and CDC are complementary: some teams use CDC to capture outbox table changes, avoiding the need for a separate relay process entirely.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Using LISTEN/NOTIFY and Service Broker for Lightweight Messaging</h3>
+
+<p class="text-gray-300 leading-relaxed">Not every event-driven need requires a full CDC pipeline or an external message broker. Both databases have built-in lightweight notification mechanisms that work well for low-to-moderate volume use cases: real-time dashboard updates, cache invalidation, workflow triggers, and inter-process coordination within a single database.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL LISTEN/NOTIFY</strong></p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">LISTEN</code>/<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">NOTIFY</code> mechanism lets database sessions send and receive messages over named channels. A notifying session sends a string payload over a channel; all listening sessions on that channel receive it asynchronously. Notifications survive within a session but are not persisted — if no one is listening when a notification fires, it is silently dropped.</p>
+
+<p class="text-gray-300 leading-relaxed">This makes <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">LISTEN</code>/<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">NOTIFY</code> unsuitable as a guaranteed delivery mechanism, but excellent as a wake-up signal for a relay process. The canonical pattern is: write to the outbox table within your transaction, then issue a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">NOTIFY</code> at the end of the transaction. The relay process, which is sleeping in a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">LISTEN</code> loop, wakes up immediately and processes the new rows. Without this, the relay must poll on a timer, introducing unnecessary latency.</p>
+
+<p class="text-gray-300 leading-relaxed">A trigger on the outbox table can fire the notification automatically:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- PostgreSQL: trigger-based NOTIFY on outbox insert
+CREATE OR REPLACE FUNCTION notify_outbox_insert()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM pg_notify(
+        'outbox_event',
+        json_build_object(
+            'id',          NEW.id,
+            'event_type',  NEW.event_type,
+            'aggregate_id', NEW.aggregate_id
+        )::TEXT
+    );
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_notify_outbox
+AFTER INSERT ON event_outbox
+FOR EACH ROW EXECUTE FUNCTION notify_outbox_insert();</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The relay subscribes with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">LISTEN outbox_event</code> and blocks until a notification arrives, then immediately polls the outbox for unprocessed rows. This hybrid approach — outbox for durability, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">NOTIFY</code> for low latency — is robust and elegant.</p>
+
+<p class="text-gray-300 leading-relaxed">One constraint: the payload in a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">NOTIFY</code> is limited to 8000 bytes. This is plenty for identifiers and metadata but not for large JSON documents. Keep notification payloads small; include identifiers and let the receiver query for full data if needed.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server Service Broker</strong></p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server Service Broker is a more heavyweight native messaging system built directly into the SQL Server engine. It provides persistent queues, guaranteed ordered delivery, and transactional message enqueue/dequeue — all within the database. Unlike <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">LISTEN</code>/<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">NOTIFY</code>, messages survive server restarts and are not dropped if there's no active receiver.</p>
+
+<p class="text-gray-300 leading-relaxed">Service Broker models communication as conversations between services, each backed by queues. The setup is verbose by modern standards, but the guarantees are strong.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server: minimal Service Broker setup for event notifications
+-- Enable Service Broker on the database
+ALTER DATABASE OrdersDB SET ENABLE_BROKER WITH ROLLBACK IMMEDIATE;
+
+-- Create message type, contract, queues, and services
+CREATE MESSAGE TYPE [OrderEventMessage]
+    VALIDATION = WELL_FORMED_XML;
+
+CREATE CONTRACT [OrderEventContract]
+    ([OrderEventMessage] SENT BY INITIATOR);
+
+CREATE QUEUE OrderEventQueue;
+CREATE SERVICE [OrderEventService]
+    ON QUEUE OrderEventQueue ([OrderEventContract]);
+
+-- Send a message within a transaction
+DECLARE @conversation UNIQUEIDENTIFIER;
+BEGIN DIALOG CONVERSATION @conversation
+    FROM SERVICE [OrderEventService]
+    TO SERVICE 'OrderEventService'
+    ON CONTRACT [OrderEventContract]
+    WITH ENCRYPTION = OFF;
+
+SEND ON CONVERSATION @conversation
+    MESSAGE TYPE [OrderEventMessage]
+    (N'&lt;OrderPlaced&gt;&lt;OrderId&gt;1001&lt;/OrderId&gt;&lt;CustomerId&gt;42&lt;/CustomerId&gt;&lt;/OrderPlaced&gt;');
+
+-- Receive a message
+DECLARE @msg NVARCHAR(MAX);
+RECEIVE TOP(1)
+    @msg = CAST(message_body AS NVARCHAR(MAX))
+FROM OrderEventQueue;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Service Broker is transactional — sending and receiving participate in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">BEGIN TRANSACTION</code>/<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">COMMIT</code> semantics. A message that is received inside a transaction that rolls back returns to the queue. This makes it genuinely at-least-once with automatic retry semantics.</p>
+
+<p class="text-gray-300 leading-relaxed">In practice, Service Broker fell out of fashion as external message brokers matured, partly because its XML-based message model is awkward in modern JSON-centric architectures, and partly because managing Broker infrastructure inside a database creates operational coupling that teams prefer to avoid. It remains a solid choice for internal-to-SQL-Server workflows, particularly for implementing background processing, saga choreography, or workflow retry patterns without introducing external dependencies.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Ordering, Idempotency, and Consumer Guarantees</h3>
+
+<p class="text-gray-300 leading-relaxed">The mechanics of emitting events are only half the challenge. The harder problems emerge on the consumer side: what order do events arrive in, what happens when the same event arrives twice, and what happens when events arrive out of order?</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Ordering</strong></p>
+
+<p class="text-gray-300 leading-relaxed">A common misconception is that events produced from a single database table are naturally ordered by transaction commit time. They are not — not in a distributed sense, and not even locally in the presence of concurrent transactions. Consider two transactions, T1 and T2, that start in that order. T2 might commit first. A consumer reading the CDC stream or the outbox by <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">created_at</code> will see T2's events before T1's, even though T1 started first.</p>
+
+<p class="text-gray-300 leading-relaxed">For most event-driven systems, per-entity ordering is what matters. Events about order #1001 should be processed in the order they were committed for that order. This is why CDC tools like Debezium partition Kafka topics by primary key — all changes to a given row go to the same partition, preserving order for that entity.</p>
+
+<p class="text-gray-300 leading-relaxed">In an outbox setup, you can enforce per-entity ordering at the relay level by querying events grouped by <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">aggregate_id</code> and processing each group sequentially, or by using a sequence number per aggregate. Global ordering across all entities is usually unnecessary and expensive to guarantee.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Idempotency</strong></p>
+
+<p class="text-gray-300 leading-relaxed">At-least-once delivery is the realistic default in any reliable messaging system. Networks fail; processes crash; relay jobs restart. Consumers will receive duplicate events. The correct response is to design consumers to be idempotent — processing the same event twice should produce the same result as processing it once.</p>
+
+<p class="text-gray-300 leading-relaxed">Idempotency strategies include: tracking processed event IDs in a table and skipping duplicates; using upsert semantics (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">INSERT ... ON CONFLICT DO UPDATE</code> in PostgreSQL, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">MERGE</code> in SQL Server) so re-processing a create event doesn't fail; or making business logic naturally idempotent (setting a status to "shipped" twice is harmless; incrementing a counter twice is not).</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- PostgreSQL: idempotent event processing using upsert
+INSERT INTO order_projections (order_id, status, last_event_id, updated_at)
+VALUES ($1, $2, $3, NOW())
+ON CONFLICT (order_id) DO UPDATE
+    SET status        = EXCLUDED.status,
+        last_event_id = EXCLUDED.last_event_id,
+        updated_at    = EXCLUDED.updated_at
+WHERE order_projections.last_event_id &lt; EXCLUDED.last_event_id;
+-- The WHERE clause prevents older events from overwriting newer state</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server: idempotent event processing using MERGE
+MERGE INTO order_projections AS target
+USING (VALUES (@order_id, @status, @last_event_id, SYSDATETIMEOFFSET()))
+    AS source (order_id, status, last_event_id, updated_at)
+ON target.order_id = source.order_id
+WHEN MATCHED AND target.last_event_id &lt; source.last_event_id THEN
+    UPDATE SET
+        status        = source.status,
+        last_event_id = source.last_event_id,
+        updated_at    = source.updated_at
+WHEN NOT MATCHED THEN
+    INSERT (order_id, status, last_event_id, updated_at)
+    VALUES (source.order_id, source.status,
+            source.last_event_id, source.updated_at);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The conditional on <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">last_event_id</code> in both examples is an application of optimistic ordering: only accept an event if it represents newer state than what's already stored. This pattern, sometimes called a "fenced" upsert, protects against out-of-order delivery corrupting your read models.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Dead Letter Queues</strong></p>
+
+<p class="text-gray-300 leading-relaxed">No event-driven system is complete without handling the case where a consumer repeatedly fails to process an event. An event that causes a null pointer exception in consumer code, or that references data that doesn't yet exist due to an ordering problem, will fail every time it's retried. Without a dead letter queue (DLQ), the consumer either blocks indefinitely or silently skips the event — both bad outcomes.</p>
+
+<p class="text-gray-300 leading-relaxed">In an outbox-based system, the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">retry_count</code> column does this work. After a configurable number of failures, the relay marks the event as permanently failed and routes it to a dead letter table for human inspection. SQL Server Service Broker has built-in poison message handling: a message that is rolled back five times is automatically moved to a dead letter queue. Designing this path explicitly, before you need it in production, prevents a single bad event from halting all processing.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Performance, Retention, and Production Operations</h3>
+
+<p class="text-gray-300 leading-relaxed">Event-driven systems introduce write amplification. Every business write now produces at least one additional row in an outbox or change table. At low volume this is invisible; at high volume it becomes a significant operational concern.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Write Amplification and Batching</strong></p>
+
+<p class="text-gray-300 leading-relaxed">A system inserting 10,000 orders per minute also inserts 10,000 outbox rows per minute. Depending on table layout and index cardinality, that can double the I/O budget. The mitigation is batching at the relay level — reading and forwarding events in batches rather than one at a time. This trades latency (events take slightly longer to be forwarded) for throughput.</p>
+
+<p class="text-gray-300 leading-relaxed">The outbox relay should also use <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SELECT ... FOR UPDATE SKIP LOCKED</code> in PostgreSQL or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">WITH (UPDLOCK, READPAST)</code> in SQL Server to allow multiple relay instances to run concurrently without contending for the same rows. This is the correct pattern for competing consumers on a database-backed queue.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- PostgreSQL: batch relay with SKIP LOCKED for concurrent relay workers
+WITH batch AS (
+    SELECT id, aggregate_id, event_type, payload
+    FROM event_outbox
+    WHERE processed_at IS NULL
+    ORDER BY created_at
+    LIMIT 500
+    FOR UPDATE SKIP LOCKED
+)
+UPDATE event_outbox
+SET processed_at = NOW()
+FROM batch
+WHERE event_outbox.id = batch.id
+RETURNING batch.*;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server: batch relay with READPAST for concurrent relay workers
+WITH batch AS (
+    SELECT TOP 500 id, aggregate_id, event_type, payload
+    FROM event_outbox WITH (UPDLOCK, READPAST)
+    WHERE processed_at IS NULL
+    ORDER BY created_at
+)
+UPDATE event_outbox
+SET processed_at = SYSDATETIMEOFFSET()
+OUTPUT
+    DELETED.id,
+    DELETED.aggregate_id,
+    DELETED.event_type,
+    DELETED.payload
+FROM event_outbox
+INNER JOIN batch ON event_outbox.id = batch.id;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SKIP LOCKED</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">READPAST</code> are semantically equivalent in this context: they skip rows that are already locked by another session, so concurrent workers automatically partition the work without explicit coordination.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Retention and Archival</strong></p>
+
+<p class="text-gray-300 leading-relaxed">Processed outbox rows and CDC change tables both accumulate over time. A system producing 10,000 events per minute will accumulate 14 million rows per day in the outbox table. Without a retention policy, query performance degrades and storage costs rise.</p>
+
+<p class="text-gray-300 leading-relaxed">The simplest approach is periodic deletion of processed rows older than a configured window — 24 to 72 hours is common, giving a replay window for debugging. Deletion should be done in small batches to avoid long-running locks:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- PostgreSQL: batched deletion of old processed outbox rows
+DELETE FROM event_outbox
+WHERE id IN (
+    SELECT id FROM event_outbox
+    WHERE processed_at &lt; NOW() - INTERVAL '48 hours'
+    LIMIT 5000
+);</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server: batched deletion of old processed outbox rows
+DELETE TOP (5000) FROM event_outbox
+WHERE processed_at &lt; DATEADD(HOUR, -48, SYSDATETIMEOFFSET());</code></pre>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server CDC, the cleanup job retention is configured when enabling CDC:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server: configure CDC cleanup retention (in minutes; 4320 = 72 hours)
+EXEC sys.sp_cdc_change_job
+    @job_type       = N'cleanup',
+    @retention      = 4320,
+    @threshold      = 5000;  -- max rows deleted per cleanup cycle</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Monitoring</strong></p>
+
+<p class="text-gray-300 leading-relaxed">Production event-driven systems need observability across three dimensions: lag (how far behind are consumers?), error rate (how many events are landing in the dead letter queue?), and throughput (events per second, which reveals upstream problems when it drops unexpectedly).</p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, replication slot lag is visible in</p>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
