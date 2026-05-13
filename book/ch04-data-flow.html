@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 4: Data Flow and Pipelines — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 4: Data Flow and Pipelines. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 4 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 4: Data Flow and Pipelines</h2>
+
+<p class="text-gray-300 leading-relaxed">Data doesn't sit still. From the moment a user clicks a button or an application fires a query, data moves — between tables, between systems, between databases, and across networks. Understanding how data flows through and around your database is one of the most practical skills a DBA can develop, because data pipelines are where performance problems accumulate, where data integrity breaks down, and where the gap between a system that scales and one that collapses under load is most visible. This chapter covers the mechanics of data movement: how databases handle bulk loads, how ETL and ELT pipelines are structured and tuned, how change data capture works, and how to build pipelines that don't quietly corrupt or lose data under pressure.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">How Data Actually Moves: Reads, Writes, and the Buffer Layer</h3>
+
+<p class="text-gray-300 leading-relaxed">Before thinking about pipelines at the architectural level, it helps to understand what happens physically when data enters or leaves a database. Both PostgreSQL and SQL Server sit a layer of abstraction above raw disk I/O. When a query reads rows, those pages are pulled from disk into memory — PostgreSQL calls this the shared buffer cache, SQL Server calls it the buffer pool. Writes don't go directly to disk either; they go to memory first, then are flushed to disk asynchronously based on checkpoint and write-ahead log (WAL) activity. This design is what makes databases fast, but it also means data in flight is temporarily living in multiple places at once.</p>
+
+<p class="text-gray-300 leading-relaxed">Understanding this matters for pipelines because bulk insert operations, COPY commands, and streaming ingestion all interact with this buffer layer differently. A naive bulk load that inserts rows one at a time forces thousands of individual page allocations and WAL entries. A well-structured bulk load using batch inserts or native bulk load tools bypasses much of that overhead.</p>
+
+<p class="text-gray-300 leading-relaxed">The WAL (or transaction log in SQL Server's terminology) is particularly important here. Every data modification — insert, update, delete — generates a log record before it modifies any actual data page. This is the foundation of durability, and it's also what enables replication and change data capture downstream. Anything moving data into or out of your database is, at some level, interacting with this log.</p>
+
+<p class="text-gray-300 leading-relaxed">When you're designing or debugging a pipeline, one of the first questions to ask is: how much log traffic is this generating, and is that sustainable? A pipeline that streams 50,000 rows per second to a table with six indexes, a trigger, and cascading foreign key checks will generate far more WAL/log activity than the raw byte count of the data would suggest.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Bulk Loading: COPY, BULK INSERT, and BCP</h3>
+
+<p class="text-gray-300 leading-relaxed">The fastest way to move large amounts of data into a PostgreSQL or SQL Server database is to use the native bulk loading tools, not row-by-row INSERT statements from application code. Both platforms have dedicated mechanisms for this, and the performance difference can be several orders of magnitude.</p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, the COPY command is the workhorse of bulk loading. It reads data from a file or from standard input (including pipe input from another process) and loads it directly into a table with minimal overhead. COPY bypasses constraint checks on a per-row basis by doing them in bulk, skips row-level triggers in some configurations, and generates significantly less WAL traffic than equivalent INSERT statements when used with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">wal_level = minimal</code> in non-replicated contexts.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Load a CSV file directly into a table
+COPY orders (order_id, customer_id, order_date, total_amount)
+FROM '/data/exports/orders_2024.csv'
+WITH (
+    FORMAT csv,
+    HEADER true,
+    DELIMITER ',',
+    NULL 'NULL',
+    ENCODING 'UTF8'
+);
+
+-- Load from a program's output (useful for streaming from another system)
+COPY orders (order_id, customer_id, order_date, total_amount)
+FROM PROGRAM 'gunzip -c /data/exports/orders_2024.csv.gz'
+WITH (FORMAT csv, HEADER true);</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- BULK INSERT from a CSV file
+BULK INSERT dbo.orders
+FROM 'D:\data\exports\orders_2024.csv'
+WITH (
+    FIELDTERMINATOR = ',',
+    ROWTERMINATOR = '\n',
+    FIRSTROW = 2,           -- skip header row
+    TABLOCK,                -- table-level lock for faster load
+    CODEPAGE = '65001'      -- UTF-8
+);
+
+-- Using OPENROWSET for more format control
+INSERT INTO dbo.orders (order_id, customer_id, order_date, total_amount)
+SELECT order_id, customer_id, order_date, total_amount
+FROM OPENROWSET(
+    BULK 'D:\data\exports\orders_2024.csv',
+    FORMATFILE = 'D:\data\formats\orders_format.xml',
+    FIRSTROW = 2
+) AS source;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">There are several tuning considerations that experienced DBAs apply consistently during bulk loads. In PostgreSQL, if you're loading into a table that currently has no data (a fresh load), dropping indexes before the load and recreating them afterward is almost always faster than maintaining them during the insert. Index maintenance during a bulk load is expensive because each row insertion requires a B-tree update for every index. If you're loading into a live table, this tradeoff becomes more complex, but batching rows into groups of 10,000 to 100,000 and committing between batches usually outperforms either single-row inserts or one massive transaction.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">TABLOCK</code> hint in BULK INSERT enables minimally logged operations when the database recovery model is set to BULK_LOGGED or SIMPLE. This dramatically reduces transaction log generation. When the recovery model is FULL (which is typical in production for point-in-time recovery), bulk loads are fully logged, but you can still get significant speed gains from disabling indexes, using proper batch sizes, and ensuring the target table isn't being read heavily during the load.</p>
+
+<p class="text-gray-300 leading-relaxed">One real-world pattern worth knowing: many production pipelines use a staging table — a plain, unindexed table with no constraints — as a landing zone for bulk loads. The data lands fast, then a separate process validates, transforms, and inserts it into the production table with proper constraints applied. This pattern separates the concerns of speed (bulk load) and correctness (constraint validation), and makes it easy to inspect and reprocess bad rows without corrupting production data.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">ETL vs. ELT: Structural Patterns and Where Databases Fit</h3>
+
+<p class="text-gray-300 leading-relaxed">For most of the past two decades, ETL — Extract, Transform, Load — was the standard pattern for moving data between systems. Data is pulled from a source, transformed by an external tool or process (SSIS, Talend, Informatica, custom Python scripts), and then loaded into the target system. The database was the destination, not the participant.</p>
+
+<p class="text-gray-300 leading-relaxed">ELT — Extract, Load, Transform — flips this. Data is extracted from the source and loaded into the target database in raw or near-raw form. The transformation happens inside the database using SQL. Modern cloud data warehouses (Snowflake, BigQuery, Redshift) popularized this pattern, but it works equally well in traditional PostgreSQL and SQL Server environments, especially as servers have grown more powerful and storage has become cheaper.</p>
+
+<p class="text-gray-300 leading-relaxed">The practical difference isn't just philosophical. In ETL, your database sees only clean, transformed data. In ELT, your database sees everything — including dirty data, duplicates, and schema mismatches — and is responsible for dealing with it. The DBA's role in an ELT environment is therefore more active. You need staging tables, transformation procedures, data quality checks, and monitoring on the transformation step itself.</p>
+
+<p class="text-gray-300 leading-relaxed">A typical ELT pattern in PostgreSQL might look like this:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Step 1: Raw data lands in staging table (loaded via COPY)
+-- Step 2: Transform and insert into production table with deduplication
+
+INSERT INTO orders (order_id, customer_id, order_date, total_amount, created_at)
+SELECT DISTINCT ON (order_id)
+    order_id::bigint,
+    customer_id::bigint,
+    order_date::date,
+    total_amount::numeric(12, 2),
+    now()
+FROM staging_orders
+WHERE order_id IS NOT NULL
+  AND total_amount::numeric &gt; 0
+ON CONFLICT (order_id) DO UPDATE
+    SET total_amount = EXCLUDED.total_amount,
+        updated_at   = now()
+WHERE orders.total_amount IS DISTINCT FROM EXCLUDED.total_amount;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Step 2: Transform and merge into production table with deduplication
+MERGE INTO dbo.orders AS target
+USING (
+    SELECT
+        order_id,
+        customer_id,
+        TRY_CAST(order_date AS date)            AS order_date,
+        TRY_CAST(total_amount AS numeric(12,2)) AS total_amount
+    FROM dbo.staging_orders
+    WHERE order_id IS NOT NULL
+      AND TRY_CAST(total_amount AS numeric(12,2)) &gt; 0
+) AS source
+ON target.order_id = source.order_id
+WHEN MATCHED AND target.total_amount &lt;&gt; source.total_amount THEN
+    UPDATE SET
+        target.total_amount = source.total_amount,
+        target.updated_at   = GETDATE()
+WHEN NOT MATCHED BY TARGET THEN
+    INSERT (order_id, customer_id, order_date, total_amount, created_at)
+    VALUES (source.order_id, source.customer_id, source.order_date,
+            source.total_amount, GETDATE());</code></pre>
+
+<p class="text-gray-300 leading-relaxed">One thing DBAs frequently underestimate in ELT pipelines is the cost of the transformation step itself. A MERGE or INSERT...SELECT against a 200-million-row staging table without proper indexing will bring a server to its knees. The staging table should have at least the join key indexed. The target table's indexes should be considered carefully — if you're doing a large merge, a full table scan of the target might actually be faster than a nested loop lookup for each source row.</p>
+
+<p class="text-gray-300 leading-relaxed">SSIS (SQL Server Integration Services) deserves a mention here because it's still widely deployed in SQL Server environments. SSIS handles ETL with a drag-and-drop designer and supports bulk loading, data type conversions, lookups, and error row redirection. For DBAs managing existing SSIS pipelines, the key performance knobs are: default buffer size (increase for large data volumes), parallel execution (increase max concurrent executables), and ensuring OLEDB destinations are configured for bulk insert mode rather than row-by-row inserts.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Change Data Capture: Streaming Changes Out of the Database</h3>
+
+<p class="text-gray-300 leading-relaxed">Change Data Capture (CDC) is the mechanism by which a database publishes a stream of changes — inserts, updates, deletes — that other systems can consume. It's fundamentally different from batch ETL because instead of periodically extracting a snapshot of data, CDC captures every individual change as it happens and makes it available for downstream consumers.</p>
+
+<p class="text-gray-300 leading-relaxed">Both PostgreSQL and SQL Server have native CDC mechanisms, and both are based on reading the transaction log rather than querying the actual tables. This is important because log-based CDC has almost no overhead on the source database — it doesn't add triggers, doesn't lock rows, and doesn't run expensive queries. It reads from the log, which is already being written for durability purposes.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL logical replication and decoding</strong> are the foundation of CDC in PostgreSQL. The server can be configured to publish changes from specific tables, and consumers (replication slots) can subscribe to that stream. Tools like Debezium connect to PostgreSQL's logical replication slot and translate the binary log stream into structured events (typically JSON on Kafka), which downstream systems consume.</p>
+
+<p class="text-gray-300 leading-relaxed">To enable and inspect logical replication in PostgreSQL:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Verify logical replication is enabled
+SHOW wal_level;  -- must be 'logical'
+
+-- Create a publication for specific tables
+CREATE PUBLICATION orders_pipeline
+FOR TABLE orders, order_items, customers
+WITH (publish = 'insert, update, delete');
+
+-- Check existing publications
+SELECT pubname, pubtables, pubinsert, pubupdate, pubdelete
+FROM pg_publication
+JOIN pg_publication_tables ON pubname = pubname
+WHERE pubname = 'orders_pipeline';
+
+-- Monitor replication slot lag (critical for production)
+SELECT slot_name,
+       pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)) AS lag,
+       active
+FROM pg_replication_slots;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Enable CDC on the database
+EXEC sys.sp_cdc_enable_db;
+
+-- Enable CDC on a specific table
+EXEC sys.sp_cdc_enable_table
+    @source_schema = N'dbo',
+    @source_name   = N'orders',
+    @role_name     = NULL,          -- no role restriction
+    @supports_net_changes = 1;
+
+-- Query CDC change table to see captured changes
+SELECT
+    __$operation,   -- 1=delete, 2=insert, 3=before update, 4=after update
+    __$start_lsn,
+    order_id,
+    customer_id,
+    total_amount
+FROM cdc.dbo_orders_CT
+WHERE __$start_lsn &gt;= sys.fn_cdc_get_min_lsn('dbo_orders')
+ORDER BY __$start_lsn;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The most common production issue with CDC pipelines is <strong class="text-white">replication lag</strong> in PostgreSQL. If a replication slot's consumer is slow — maybe Debezium is restarting, or Kafka is backed up — PostgreSQL cannot discard WAL segments that the slot still needs. If this goes unchecked, the WAL directory fills up and the primary can become unavailable. Every DBA running logical replication should have an alert on replication slot lag. If it exceeds a defined threshold (often measured in bytes of WAL retained, or time delay), the on-call engineer should be paged.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, CDC stores changes in system tables within the database, and a background SQL Server Agent job cleans up old entries. If the Agent job is disabled or fails, the CDC tables grow without bound. This is a surprisingly common support issue in SQL Server environments. The retention period is configurable and should be set to balance downstream consumer processing time against table bloat.</p>
+
+<p class="text-gray-300 leading-relaxed">CDC is the right tool when you need near-real-time data propagation — feeding an analytics platform, syncing a search index, driving an event-driven microservice architecture, or maintaining a read replica with custom filtering. It's the wrong tool when you just need a daily snapshot of data for reporting, where simple batch ETL is cheaper and easier to reason about.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Pipeline Reliability: Error Handling, Idempotency, and Monitoring</h3>
+
+<p class="text-gray-300 leading-relaxed">A pipeline that works on a sunny day isn't actually a pipeline — it's a best-effort data transfer. Production pipelines need to handle failures gracefully, be restartable without creating duplicates or skipping rows, and surface their health in a way that lets DBAs catch problems before business users do.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Idempotency</strong> is the property that running a pipeline step twice produces the same result as running it once. This is the foundation of reliable pipelines. If a bulk load fails halfway through, you should be able to re-run it without duplicating data. If a CDC consumer crashes and replays events from its last checkpoint, the target database should end up in the same state as if each event had been processed exactly once.</p>
+
+<p class="text-gray-300 leading-relaxed">The most direct way to achieve idempotency in SQL is through upserts — the PostgreSQL <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ON CONFLICT DO UPDATE</code> and the SQL Server <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">MERGE</code> statement shown earlier. For bulk loads into staging tables, truncating the staging table before reloading is a simple and effective strategy. If the load fails, you truncate and reload. The staging table never contains partial data from two different runs.</p>
+
+<p class="text-gray-300 leading-relaxed">For more complex transformation pipelines, tracking pipeline state in a control table is a mature pattern:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Control table for tracking pipeline runs
+CREATE TABLE pipeline_runs (
+    run_id          bigserial PRIMARY KEY,
+    pipeline_name   text NOT NULL,
+    started_at      timestamptz NOT NULL DEFAULT now(),
+    completed_at    timestamptz,
+    rows_processed  bigint,
+    status          text NOT NULL DEFAULT 'running',  -- running, success, failed
+    error_message   text
+);
+
+-- At pipeline end, mark success
+UPDATE pipeline_runs
+SET completed_at   = now(),
+    rows_processed = 847293,
+    status         = 'success'
+WHERE run_id = $1;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Control table for tracking pipeline runs
+CREATE TABLE dbo.pipeline_runs (
+    run_id          bigint IDENTITY(1,1) PRIMARY KEY,
+    pipeline_name   nvarchar(255) NOT NULL,
+    started_at      datetimeoffset NOT NULL DEFAULT SYSDATETIMEOFFSET(),
+    completed_at    datetimeoffset,
+    rows_processed  bigint,
+    status          nvarchar(50) NOT NULL DEFAULT 'running',
+    error_message   nvarchar(max)
+);
+
+-- Mark success using OUTPUT to capture what changed
+UPDATE dbo.pipeline_runs
+SET completed_at   = SYSDATETIMEOFFSET(),
+    rows_processed = 847293,
+    status         = 'success'
+OUTPUT INSERTED.run_id, INSERTED.completed_at
+WHERE run_id = @run_id;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Watermark-based incremental loads</strong> are another pattern every DBA needs in their toolkit. Instead of loading all data every run, you track the maximum value of a monotonically increasing column — usually a timestamp or a sequence ID — from the last successful load, and use it as the starting point for the next load. This is far more efficient than full-table scans for large tables, but it requires that the source table has a reliable column to watermark against. If rows can be backdated or updated without touching an <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">updated_at</code> column, the watermark approach will miss changes.</p>
+
+<p class="text-gray-300 leading-relaxed">Monitoring is where many pipeline implementations fall short. The minimum viable monitoring for a data pipeline includes: run frequency (is it running at all?), duration (is it taking longer than usual?), row count (are we loading roughly the expected volume?), and error rate (are rows being rejected or errored?). Significant deviations in any of these — a load that normally takes 10 minutes suddenly taking 90, or a pipeline that normally loads 500K rows loading only 12K — are early signals of a problem that may not yet be visible to application users.</p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_activity</code> lets you see active pipeline queries. In SQL Server, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_requests</code> combined with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_sql_text</code> serves the same purpose. Both platforms expose query duration and wait states, which makes it possible to determine whether a slow pipeline is blocked on locks, waiting on I/O, or simply doing more CPU-intensive work than expected.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Performance Tuning Pipelines at Scale</h3>
+
+<p class="text-gray-300 leading-relaxed">When a pipeline handles millions of rows, performance mistakes that are invisible at small scale become blocking problems. This section covers the tuning patterns that experienced DBAs apply when pipelines start showing strain.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Partition-aware loading</strong> is one of the highest-leverage techniques in large-scale pipelines. Both PostgreSQL and SQL Server support table partitioning, and when bulk loads target a specific partition (or set of partitions), the database can skip constraint checking and index maintenance on other partitions entirely. If you're loading time-series data and your table is partitioned by month, loading a month's worth of data should only affect that month's partition. This reduces lock contention and makes the load dramatically faster.</p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, partition elimination applies automatically when your load targets rows that fall into a single partition range. You can verify this with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">EXPLAIN ANALYZE</code>:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Verify partition pruning is happening during an insert
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+INSERT INTO orders_partitioned (order_id, customer_id, order_date, total_amount)
+SELECT order_id, customer_id, order_date, total_amount
+FROM staging_orders
+WHERE order_date &gt;= '2024-01-01' AND order_date &lt; '2024-02-01';
+
+-- Check which partitions exist and their sizes
+SELECT
+    c.relname                          AS partition_name,
+    pg_size_pretty(pg_relation_size(c.oid)) AS size,
+    pg_stat_get_live_tuples(c.oid)     AS live_rows
+FROM pg_class c
+JOIN pg_inherits i ON c.oid = i.inhrelid
+WHERE i.inhparent = 'orders_partitioned'::regclass
+ORDER BY c.relname;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check partition statistics before a load
+SELECT
+    p.partition_number,
+    p.rows,
+    rv.value AS boundary_value,
+    fg.name  AS filegroup_name
+FROM sys.partitions p
+JOIN sys.tables t ON p.object_id = t.object_id
+JOIN sys.indexes i ON p.object_id = i.object_id AND p.index_id = i.index_id
+JOIN sys.partition_schemes ps ON i.data_space_id = ps.data_space_id
+JOIN sys.partition_functions pf ON ps.function_id = pf.function_id
+LEFT JOIN sys.partition_range_values rv
+    ON pf.function_id = rv.function_id AND p.partition_number = rv.boundary_id + 1
+JOIN sys.destination_data_spaces dds
+    ON ps.data_space_id = dds.partition_scheme_id
+    AND p.partition_number = dds.destination_id
+JOIN sys.filegroups fg ON dds.data_space_id = fg.data_space_id
+WHERE t.name = 'orders_partitioned'
+ORDER BY p.partition_number;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Parallelism</strong> is another lever. Both PostgreSQL and SQL Server can parallelize query execution, and both can be tuned to use parallelism more or less aggressively for pipeline workloads. PostgreSQL's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max_parallel_workers_per_gather</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">parallel_tuple_cost</code> settings influence whether the planner chooses parallel plans for INSERT...SELECT and similar operations. SQL Server's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">MAXDOP</code> hint or configuration setting controls degree of parallelism.</p>
+
+<p class="text-gray-300 leading-relaxed">The counterintuitive point here is that more parallelism is not always better for pipelines. A highly parallel bulk load that saturates all CPU cores will starve other concurrent queries. In mixed OLTP environments where pipelines run during business hours, it's often correct to deliberately constrain pipeline parallelism — running at MAXDOP 4 instead of 16 — so that transactional queries remain responsive. In dedicated loading windows (overnight batch jobs), you can open the throttle and use more resources.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Compression</strong> affects pipeline throughput in ways that many DBAs don't fully anticipate. Compressed tables in PostgreSQL (using <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">TOAST</code> for large columns) and SQL Server (row or page compression) store less data on disk, meaning that bulk loads write fewer pages — which is faster. But compression adds CPU cost. Whether the net result is faster or slower depends on whether your pipeline is I/O-bound or CPU-bound. On modern SSD-based storage where I/O is fast, compression sometimes adds latency rather than removing it. On spinning disk or cloud storage with per-I/O billing, compression almost always wins. The only way to know for certain is to test under production-representative load.</p>
+
+<p class="text-gray-300 leading-relaxed">Finally, <strong class="text-white">transaction sizing</strong> is one of the most common tuning opportunities in pipeline workloads. Many pipeline implementations use a single transaction for an entire load — either because that's the default, or because the developer wanted atomicity. A single transaction loading 10 million rows generates one giant transaction log entry that cannot be cleared until the transaction commits. It holds locks for the entire duration. If it fails at row 9,999,999, it rolls back all 9,999,999 rows. Batching into commits of 10,000 to 100,000 rows each is almost always better: log pressure drops, locks release regularly, and a failure only rolls back the current batch.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Key Takeaways</h3>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Data movement in a database always passes through the buffer cache and transaction log first — understanding this layer is the starting point for pipeline performance thinking.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Native bulk load tools (`COPY` in PostgreSQL, `BULK INSERT` in SQL Server) can be orders of magnitude faster than row-by-row inserts; staging tables with no indexes or constraints are the right landing zone for high-volume loads.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> CDC (Change Data Capture) is log-based and carries minimal overhead on the source database, but requires monitoring for lag — unmonitored replication slot lag in PostgreSQL can fill disk and take down the primary server.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Idempotency is not optional in production pipelines: every pipeline step should be safely re-runnable, using upserts, staging truncation, or watermark tracking to prevent duplicates and data loss on retry.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Partition-aware loading, controlled parallelism, appropriate transaction batch sizing, and compression-aware design are the primary levers for tuning pipelines at production scale; the right setting for each depends on whether the bottleneck is I/O, CPU, lock contention, or log throughput.</li>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
