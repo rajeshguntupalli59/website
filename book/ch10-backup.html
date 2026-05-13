@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 10: Backup Strategies — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 10: Backup Strategies. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 10 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 10: Backup Strategies</h2>
+
+<p class="text-gray-300 leading-relaxed">No database responsibility weighs heavier than backup. Every other optimization you perform — indexes, query tuning, replication — becomes irrelevant if you cannot recover your data after a failure. This chapter covers how PostgreSQL and SQL Server approach backup and recovery, the practical mechanics of each method, how to choose the right strategy for your environment, and what production DBAs learn the hard way about backup systems that look fine until the moment they need to work.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Why Backup Strategy Matters More Than Backup Itself</h3>
+
+<p class="text-gray-300 leading-relaxed">There is a common mistake in database operations: treating backup as a task rather than a system. A DBA schedules a nightly backup job, watches it complete successfully for months, and considers the job done. Then a failure happens, and recovery takes sixteen hours instead of two — or worse, it fails entirely. The backup existed. The strategy did not.</p>
+
+<p class="text-gray-300 leading-relaxed">A backup strategy answers several questions your backup job does not: How much data can you afford to lose? How quickly must the system be back online? Where are the backups stored? How often is recovery actually tested? What happens when the backup server itself fails?</p>
+
+<p class="text-gray-300 leading-relaxed">These questions map to two formal metrics that every DBA should know. <strong class="text-white">Recovery Point Objective (RPO)</strong> defines the maximum acceptable data loss measured in time — if your RPO is one hour, you cannot afford to lose more than one hour of transactions. <strong class="text-white">Recovery Time Objective (RTO)</strong> defines the maximum acceptable time to restore service — if your RTO is thirty minutes, your recovery process, including restoring files and replaying logs, must complete in that window.</p>
+
+<p class="text-gray-300 leading-relaxed">RPO drives how frequently you back up and whether you need continuous log shipping or point-in-time recovery. RTO drives where you store backups, whether you keep a warm standby, and how complex your restore procedure is. Every backup decision flows from these two numbers, and every environment has different ones. A financial transaction system might have an RPO of zero and an RTO of five minutes. A reporting database refreshed weekly might tolerate an RPO of twenty-four hours and an RTO of four hours.</p>
+
+<p class="text-gray-300 leading-relaxed">Understanding this distinction also changes how you think about backup types. A full backup taken once a week may satisfy an RPO of one week perfectly well — or it may be completely inadequate if you process thousands of transactions per hour. The backup type you choose is a direct expression of your RPO commitment.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Backup Types: Full, Differential, and Incremental</h3>
+
+<p class="text-gray-300 leading-relaxed">Both PostgreSQL and SQL Server support multiple backup types that differ in what they capture and how long they take to restore. Each type makes a different trade-off between backup time, storage consumption, and restore complexity.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Full backups</strong> capture the entire database at a point in time. They are the simplest to restore from — a single file contains everything — but they are the most expensive to create and store. For large databases, a full backup might take hours and produce hundreds of gigabytes. Running full backups every night is common for small databases; for large ones, it may only be practical once a week.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Differential backups</strong> (the term used in SQL Server) capture only data that has changed since the last full backup. They grow larger the longer you wait between full backups, but they are faster to create than a full backup and simpler to restore than an incremental chain. Restoring from a differential requires exactly two files: the last full backup and the latest differential.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Incremental backups</strong> capture only changes since the last backup of any kind — full or incremental. They are the smallest and fastest to create, but restoring requires the full backup plus every incremental backup taken since then, applied in order. A chain of thirty incrementals must all be intact and applied sequentially. If one is corrupted or missing, the restore fails.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL does not have a native differential backup concept at the SQL level, but tools like <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pgBackRest</code> implement both differential and incremental backup semantics at the file level through file-level comparisons and delta copies.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, the backup type is declared explicitly in the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">BACKUP DATABASE</code> command:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Full backup
+BACKUP DATABASE [SalesDB]
+TO DISK = 'D:\Backups\SalesDB_full.bak'
+WITH COMPRESSION, STATS = 10;
+
+-- Differential backup
+BACKUP DATABASE [SalesDB]
+TO DISK = 'D:\Backups\SalesDB_diff.bak'
+WITH DIFFERENTIAL, COMPRESSION, STATS = 10;
+
+-- Transaction log backup
+BACKUP LOG [SalesDB]
+TO DISK = 'D:\Backups\SalesDB_log_20240901_0200.trn'
+WITH COMPRESSION, STATS = 10;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL's built-in backup utility <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_dump</code> always produces logical backups equivalent to a full backup. File-level base backups are taken using <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_basebackup</code>, which is the foundation of physical backup strategies:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- This is a shell command, not a SQL query, but pg_basebackup
+-- can also be initiated from SQL using pg_backup_start/stop for custom scripts.
+
+-- Check current WAL position before a manual base backup
+SELECT pg_current_wal_lsn(), pg_walfile_name(pg_current_wal_lsn());
+
+-- Confirm base backup completion and WAL segment needed
+SELECT pg_backup_start_time();</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Understanding which backup type to use requires knowing your backup window (how long you can run a backup job without impacting users), your storage budget, and your restore requirements. A common production pattern is a weekly full, nightly differential (SQL Server) or nightly incremental with weekly full (pgBackRest), plus continuous transaction log backups every fifteen minutes.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Logical vs. Physical Backups</h3>
+
+<p class="text-gray-300 leading-relaxed">Beyond the full/differential/incremental distinction, both databases support two fundamentally different approaches to what gets backed up: logical backups and physical backups. These are not interchangeable, and understanding when to use each is one of the more consequential decisions in backup strategy.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Logical backups</strong> export the data as SQL statements or structured data formats. In PostgreSQL, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_dump</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_dumpall</code> produce logical backups. In SQL Server, logical backups are sometimes produced through BACPAC exports for Azure migration or through BCP utilities for bulk data. Logical backups are portable — you can restore them to a different operating system, a different database version, or a different hardware architecture. They can back up individual schemas, tables, or entire databases. They are also easier to inspect and manipulate. The drawback is that they are slow for large databases, both to create and to restore, because everything must be serialized and deserialized as SQL or structured text.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Physical backups</strong> copy the actual data files at the storage level. In PostgreSQL, this means copying the data directory files along with the Write-Ahead Log (WAL) segments required to make that copy consistent. In SQL Server, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">BACKUP DATABASE</code> always produces a physical backup — it reads data pages directly and writes them to the backup file. Physical backups are faster to create and restore for large databases, but they are less flexible. A physical backup from PostgreSQL 15 cannot be directly restored into PostgreSQL 14. A physical backup taken on Windows cannot be simply moved to Linux.</p>
+
+<p class="text-gray-300 leading-relaxed">For PostgreSQL, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_dump</code> remains the right choice for small databases, migrations, schema transfers, and selective table restores. For production databases beyond a few gigabytes, physical backup with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_basebackup</code> or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pgBackRest</code> is the standard approach.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- pg_dump is a command-line tool, but you can verify a dump's
+-- consistency window by checking transaction snapshot information
+-- from within the backup session.
+
+-- List all databases to plan a pg_dumpall strategy
+SELECT datname, pg_size_pretty(pg_database_size(datname)) AS size
+FROM pg_database
+WHERE datistemplate = false
+ORDER BY pg_database_size(datname) DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check database sizes to plan backup storage requirements
+SELECT
+    d.name AS database_name,
+    SUM(mf.size * 8 / 1024) AS size_mb,
+    d.recovery_model_desc
+FROM sys.databases d
+JOIN sys.master_files mf ON d.database_id = mf.database_id
+GROUP BY d.name, d.recovery_model_desc
+ORDER BY size_mb DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">SQL Server also offers <strong class="text-white">copy-only backups</strong>, which take a full or log backup without affecting the differential baseline or the log backup chain. These are indispensable when you need a one-off backup for a specific purpose — a pre-deployment snapshot, for instance — without disrupting the regular backup schedule.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Copy-only full backup for pre-deployment snapshot
+BACKUP DATABASE [SalesDB]
+TO DISK = 'D:\Backups\SalesDB_predeployment.bak'
+WITH COPY_ONLY, COMPRESSION, STATS = 10;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The right answer in most production environments is both: physical backups for routine disaster recovery, and periodic logical backups for migration readiness, schema documentation, and individual object recovery.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Transaction Log Management and Point-in-Time Recovery</h3>
+
+<p class="text-gray-300 leading-relaxed">Transaction logs are the bridge between backup snapshots. A full backup captures your database at a moment in time; the transaction log records every change made after that moment. Together, they allow you to restore the database to any specific point in time — not just to the moment of the last backup, but to within seconds of a failure.</p>
+
+<p class="text-gray-300 leading-relaxed">In SQL Server, this capability is controlled by the <strong class="text-white">recovery model</strong>. The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">FULL</code> recovery model retains all transaction log records until a log backup is taken, enabling point-in-time recovery. The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SIMPLE</code> recovery model automatically truncates the log after each checkpoint, which prevents log backups entirely and limits recovery to the most recent full or differential backup. The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">BULK_LOGGED</code> model is a compromise used when large bulk operations would otherwise bloat the log. For any production database where data loss is not acceptable, the recovery model should be <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">FULL</code>.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Verify recovery model for all user databases
+SELECT name, recovery_model_desc, log_reuse_wait_desc
+FROM sys.databases
+WHERE database_id &gt; 4  -- exclude system databases
+ORDER BY name;
+
+-- Change to full recovery model
+ALTER DATABASE [SalesDB] SET RECOVERY FULL;
+
+-- Immediately take a full backup after switching to FULL recovery
+-- (required to start the log chain)
+BACKUP DATABASE [SalesDB]
+TO DISK = 'D:\Backups\SalesDB_post_recovery_change.bak'
+WITH COMPRESSION;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">A common and dangerous mistake is switching a database to <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">FULL</code> recovery model without taking a full backup immediately afterward. Until that first full backup is taken, SQL Server cannot form a log chain and the database behaves like it is in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SIMPLE</code> mode.</p>
+
+<p class="text-gray-300 leading-relaxed">In PostgreSQL, the equivalent mechanism is <strong class="text-white">Write-Ahead Logging (WAL)</strong>. PostgreSQL always writes changes to WAL before applying them to data files. For point-in-time recovery (PITR), you archive WAL segments as they are completed and pair them with a base backup. When restoring, you restore the base backup and then replay WAL segments up to your target recovery point.</p>
+
+<p class="text-gray-300 leading-relaxed">WAL archiving is configured in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">postgresql.conf</code>:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>wal_level = replica
+archive_mode = on
+archive_command = 'cp %p /mnt/wal_archive/%f'
+restore_command = 'cp /mnt/wal_archive/%f %p'</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">archive_command</code> is the shell command PostgreSQL executes to copy each completed WAL segment to your archive location. It must return exit code 0 only on success; a failed archive command will stall WAL recycling and eventually halt the database if <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max_wal_size</code> fills up. This is why monitoring the archive success rate is non-negotiable.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Monitor WAL archiving status
+SELECT
+    archived_count,
+    last_archived_wal,
+    last_archived_time,
+    failed_count,
+    last_failed_wal,
+    last_failed_time,
+    NOW() - last_archived_time AS time_since_last_archive
+FROM pg_stat_archiver;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">For point-in-time recovery in PostgreSQL, the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">recovery_target_time</code> parameter in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">recovery.conf</code> (PostgreSQL 11 and earlier) or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">postgresql.conf</code> (PostgreSQL 12+) tells the recovery process where to stop replaying WAL. You can also target a specific transaction ID with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">recovery_target_xid</code>, or a named restore point created with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_create_restore_point()</code>.</p>
+
+<p class="text-gray-300 leading-relaxed">Understanding transaction log management shapes everything else in your backup strategy. Without properly functioning log backups, your RPO is determined by your last full or differential backup, not by your last log backup — a distinction that could mean hours of data loss instead of minutes.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Production Backup Architecture and Storage Considerations</h3>
+
+<p class="text-gray-300 leading-relaxed">Knowing the mechanics of individual backup commands is necessary but not sufficient. Production backup architecture involves decisions about where backups go, how they are retained, how they are secured, and how they behave under conditions you did not anticipate.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">The 3-2-1 rule</strong> is the baseline for backup storage: maintain at least three copies of your data, on at least two different types of media, with at least one copy offsite. In practice, this means local backup storage for fast restores, a secondary on-premises location for redundancy, and cloud or tape storage offsite for disaster recovery. Many organizations now add a fourth copy that is immutable — protected against deletion or modification — to defend against ransomware.</p>
+
+<p class="text-gray-300 leading-relaxed">Backup compression deserves deliberate attention. SQL Server's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">WITH COMPRESSION</code> option typically reduces backup size by 60–70% for typical OLTP data, with modest CPU overhead that is usually well worth the storage and I/O savings. PostgreSQL's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_basebackup</code> supports gzip and lz4 compression. <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pgBackRest</code> supports zstd, which achieves better compression ratios than gzip at faster speeds and is the recommended choice for modern PostgreSQL backup infrastructure.</p>
+
+<p class="text-gray-300 leading-relaxed">Backup encryption is often treated as optional until it is required by a compliance audit. Both databases support backup-level encryption. SQL Server supports <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">BACKUP</code> encryption using certificates or asymmetric keys stored in the master database. <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pgBackRest</code> supports AES-256-CBC encryption of backup files. The critical detail that catches DBAs off guard: if you encrypt backups, you must also back up the encryption keys separately, stored somewhere other than the database server being backed up. Losing the key means losing the data.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Verify backup history and completion times for the last 7 days
+SELECT
+    bs.database_name,
+    bs.type AS backup_type,
+    bs.backup_start_date,
+    bs.backup_finish_date,
+    DATEDIFF(MINUTE, bs.backup_start_date, bs.backup_finish_date) AS duration_min,
+    CAST(bs.backup_size / 1048576.0 AS DECIMAL(10,2)) AS backup_size_mb,
+    CAST(bs.compressed_backup_size / 1048576.0 AS DECIMAL(10,2)) AS compressed_mb,
+    bmf.physical_device_name
+FROM msdb.dbo.backupset bs
+JOIN msdb.dbo.backupmediafamily bmf
+    ON bs.media_set_id = bmf.media_set_id
+WHERE bs.backup_start_date &gt;= DATEADD(DAY, -7, GETDATE())
+ORDER BY bs.backup_start_date DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- If using pgBackRest, query backup info via its info command (shell).
+-- From within PostgreSQL, monitor backup-related activity:
+SELECT pid, usename, application_name, state, backend_start,
+       wait_event_type, wait_event
+FROM pg_stat_activity
+WHERE application_name LIKE '%backup%'
+   OR application_name LIKE '%pgbackrest%';</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Retention policies</strong> determine how long backups are kept. Retention is not simply a storage cost decision — it determines how far back you can recover. A common production policy is: daily backups retained for thirty days, weekly full backups retained for twelve weeks, monthly backups retained for one year. In <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pgBackRest</code>, retention is configured per repository. In SQL Server, retention is typically enforced through maintenance plan jobs or custom cleanup scripts that delete backup files older than a threshold.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Backup monitoring</strong> should alert on three conditions: backup jobs that did not run, backup jobs that ran but produced errors, and backup files that have not been accessed or validated recently. Many environments monitor backup completion but neglect to verify that the resulting files are valid. A backup file that completes without errors but contains corrupted pages will fail silently until the moment you try to restore it.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Testing Restores and Validating Backup Integrity</h3>
+
+<p class="text-gray-300 leading-relaxed">The most important sentence in this chapter: <strong class="text-white">an untested backup is not a backup</strong>. It is a file that might contain recoverable data, which is a very different thing. Production DBAs who have run restore drills know this intimately. Those who have not tend to discover it during an incident.</p>
+
+<p class="text-gray-300 leading-relaxed">Restore testing should be treated as a scheduled, recurring operational task, not a one-time validation. The specific frequency depends on your environment, but a reasonable baseline is to perform a full test restore at least monthly, and to verify backup integrity weekly.</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server provides two commands for backup validation. <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">RESTORE VERIFYONLY</code> checks the backup file for structural integrity and reads the header without restoring anything. It is fast and catches corrupted backup files before they are needed in an emergency. <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">DBCC CHECKDB</code> after a test restore verifies the consistency of the actual data pages.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Verify backup file integrity without restoring
+RESTORE VERIFYONLY
+FROM DISK = 'D:\Backups\SalesDB_full.bak';
+
+-- Restore to a test instance to validate full recoverability
+RESTORE DATABASE [SalesDB_Test]
+FROM DISK = 'D:\Backups\SalesDB_full.bak'
+WITH MOVE 'SalesDB_data' TO 'D:\TestRestore\SalesDB_Test.mdf',
+     MOVE 'SalesDB_log'  TO 'D:\TestRestore\SalesDB_Test_log.ldf',
+     NORECOVERY, STATS = 10;
+
+-- Apply differential backup
+RESTORE DATABASE [SalesDB_Test]
+FROM DISK = 'D:\Backups\SalesDB_diff.bak'
+WITH NORECOVERY, STATS = 10;
+
+-- Apply log backup and recover to a specific point in time
+RESTORE LOG [SalesDB_Test]
+FROM DISK = 'D:\Backups\SalesDB_log_20240901_0200.trn'
+WITH RECOVERY,
+     STOPAT = '2024-09-01 01:45:00';</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- After restoring a base backup and replaying WAL,
+-- verify data integrity using pg_dump on the restored instance
+-- or check for corruption using amcheck extension
+
+-- Enable amcheck and verify a critical index
+CREATE EXTENSION IF NOT EXISTS amcheck;
+
+SELECT bt_index_check('orders_pkey'::regclass, true);
+SELECT bt_index_check('orders_customer_id_idx'::regclass, true);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">amcheck</code> extension in PostgreSQL verifies B-tree index structural integrity. Running it after a restore confirms that the backup did not contain silently corrupted index pages. For heap data, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_catalog</code> checks and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VACUUM VERBOSE</code> can surface corruption that would otherwise remain hidden.</p>
+
+<p class="text-gray-300 leading-relaxed">Restore testing should be documented. Record the date, which backup set was used, how long the restore took, and whether the recovered data was verified. This documentation serves two purposes: it proves to auditors and management that recovery has been validated, and it gives you realistic RTO data based on actual restore times rather than theoretical estimates.</p>
+
+<p class="text-gray-300 leading-relaxed">Partial restores deserve attention too. In SQL Server, <strong class="text-white">piecemeal restore</strong> allows you to bring the primary filegroup online quickly while secondary filegroups restore in the background — useful for very large databases where bringing the entire database back first would violate your RTO. In PostgreSQL, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_restore</code> allows restoring individual tables from a directory-format dump, which can recover an accidentally dropped table without restoring the entire database.</p>
+
+<p class="text-gray-300 leading-relaxed">Finally, build your restore runbooks while you are calm, not during an incident. A runbook for each restore scenario — full restore, point-in-time restore, single table recovery, server migration — should be written in advance, reviewed regularly, and accessible without requiring a VPN connection to the database server that is currently down.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Key Takeaways</h3>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **RPO and RTO are the foundation of every backup decision.** Know these numbers for your environment before choosing a backup type, frequency, or storage location. A backup strategy that cannot meet its RPO under real conditions is not a strategy — it is a false sense of security.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Logical and physical backups serve different purposes.** Physical backups (`pg_basebackup`, SQL Server `BACKUP DATABASE`) are fast and suitable for disaster recovery at scale. Logical backups (`pg_dump`, selective exports) are portable and suitable for migrations, schema transfers, and partial object recovery. Production environments should use both.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Transaction log management is what enables point-in-time recovery.** In SQL Server, the `FULL` recovery model with regular log backups is required. In PostgreSQL, WAL archiving must be configured, monitored, and verified. Without functioning log backups, your recovery capability is limited to your last full or differential backup.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Storage, retention, and encryption must be designed deliberately.** The 3-2-1 rule provides the minimum framework for backup placement. Encryption requires separately backed-up keys. Retention policies must balance storage cost against recovery requirements, not one at the expense of the other.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **A backup is only as good as the last time it was successfully restored.** Schedule restore tests as operational tasks, document the results, validate data integrity after restoration, and build runbooks for every recovery scenario before you need them.</li>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
