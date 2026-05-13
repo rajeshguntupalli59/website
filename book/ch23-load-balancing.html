@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 23: Load Balancing — The DBA Handbook</title>
+  <meta name="description" content="The DBA Handbook Chapter 23: Load Balancing. PostgreSQL and SQL Server — a practical DBA guide by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-blue-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"     class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Book</a>
+        <a href="index.html"       class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"    class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-blue-400 hover:text-blue-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-blue-900/40 border border-blue-800/40 text-blue-300 text-xs rounded-full font-medium">Chapter 23 of 40</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 23: Load Balancing</h2>
+
+<p class="text-gray-300 leading-relaxed">Database load balancing is one of those topics that sits at the intersection of architecture, operations, and performance tuning. At its core, load balancing distributes client connections and query workloads across multiple database servers so that no single node becomes a bottleneck. In practice, it involves understanding read/write splitting, connection routing, failover behavior, and how your application interacts with the database tier. This chapter walks through the mechanics of load balancing for both PostgreSQL and SQL Server — from the foundational concepts that justify why you need it, through the tools and configurations that implement it, to the production edge cases that will make or break your setup under real traffic.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Why a Single Database Node Is Not Enough</h3>
+
+<p class="text-gray-300 leading-relaxed">Most systems start with one database server, and for a long time that single server is perfectly adequate. Then traffic grows. Read queries start competing with write transactions. Long-running reports starve transactional queries of CPU. Backup jobs fight with production reads for I/O bandwidth. The natural response is to scale up — add more CPU, faster storage, more RAM. Vertical scaling works up to a point, but it has a hard ceiling and it doesn't improve availability. When that one server goes down, everything goes down.</p>
+
+<p class="text-gray-300 leading-relaxed">Load balancing solves the scalability problem by adding horizontal capacity and the availability problem by ensuring that traffic continues to flow even when one server in the pool becomes unavailable. But "load balancing a database" is not the same as load balancing a stateless web service. A database maintains state, enforces ACID guarantees, and distinguishes between reads and writes in ways that a round-robin TCP load balancer cannot understand on its own. You cannot simply spray write transactions across five database servers without a coherent replication strategy underneath.</p>
+
+<p class="text-gray-300 leading-relaxed">This distinction matters from the very first design decision. Before you deploy any load balancing infrastructure, you need to understand what kind of workload you are distributing. The read/write ratio of your application determines whether read scaling through replicas will give you meaningful relief. Applications that are 90% reads — analytics dashboards, reporting tools, search-heavy frontends — benefit enormously from distributing reads across replicas. Applications that are 80% writes face a harder problem because the primary server remains the bottleneck regardless of how many replicas you add.</p>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL and SQL Server approach the replication layer that underlies load balancing quite differently. PostgreSQL uses streaming replication with standby servers that can serve read queries, and a rich ecosystem of third-party tools handles the routing layer above it. SQL Server has Always On Availability Groups, which include readable secondary replicas and a listener endpoint that abstracts the current primary from the application. Understanding these foundations sets the stage for everything that follows.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Read/Write Splitting and Why It Changes Everything</h3>
+
+<p class="text-gray-300 leading-relaxed">Once you have a primary database and one or more replicas, the next architectural decision is whether your application can safely distinguish between read traffic and write traffic. Read/write splitting is the practice of routing <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SELECT</code> queries to replica servers while directing all <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">INSERT</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">UPDATE</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">DELETE</code>, and DDL to the primary. Done correctly, this multiplies your read throughput linearly with each replica you add while keeping write consistency intact.</p>
+
+<p class="text-gray-300 leading-relaxed">The challenge is replication lag. Replicas in PostgreSQL streaming replication and SQL Server Always On both apply changes asynchronously by default (synchronous replication is available but carries a write latency penalty). A replica might be anywhere from milliseconds to seconds behind the primary depending on network conditions, write volume, and replica hardware. If your application reads data immediately after writing it — think of a user who submits a form and is then redirected to a page that displays the submitted data — and that read lands on a lagging replica, the user will see stale data or nothing at all.</p>
+
+<p class="text-gray-300 leading-relaxed">This is called read-your-own-writes consistency, and it is the most common source of subtle bugs when teams first enable read/write splitting. The solutions range from sticky sessions (routing a given user's reads to the primary for a short window after they write), to reading from the primary for any query that requires freshness, to designing the application to tolerate eventual consistency in specific flows.</p>
+
+<p class="text-gray-300 leading-relaxed">You can monitor replication lag directly from the database, which gives you the data you need to make informed routing decisions.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- On the primary: check replication lag for each connected standby
+SELECT
+    client_addr,
+    application_name,
+    state,
+    sent_lsn,
+    write_lsn,
+    flush_lsn,
+    replay_lsn,
+    (sent_lsn - replay_lsn) AS replication_lag_bytes,
+    write_lag,
+    flush_lag,
+    replay_lag
+FROM pg_stat_replication
+ORDER BY replay_lag DESC NULLS LAST;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- On the primary: check replication lag for each secondary replica
+SELECT
+    ar.replica_server_name,
+    adc.database_name,
+    drs.synchronization_state_desc,
+    drs.synchronization_health_desc,
+    drs.log_send_queue_size,
+    drs.log_send_rate,
+    drs.redo_queue_size,
+    drs.redo_rate,
+    drs.last_redone_time,
+    DATEDIFF(SECOND, drs.last_redone_time, GETDATE()) AS lag_seconds
+FROM sys.dm_hadr_database_replica_states drs
+JOIN sys.availability_replicas ar
+    ON drs.replica_id = ar.replica_id
+JOIN sys.availability_databases_cluster adc
+    ON drs.group_database_id = adc.group_database_id
+WHERE drs.is_local = 0
+ORDER BY lag_seconds DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Connection routing logic that checks this lag before sending a read to a replica — and falls back to the primary when lag exceeds a threshold — is one of the more sophisticated patterns in production load balancing. Some proxy tools implement this natively; others require you to build it into your application layer or connection pool configuration.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Connection Pooling as the Foundation of Load Balancing</h3>
+
+<p class="text-gray-300 leading-relaxed">Before discussing dedicated load balancer tools, it is worth recognizing that connection pooling and load balancing are deeply intertwined. Each database connection consumes memory and a process (in PostgreSQL) or a thread (in SQL Server). PostgreSQL's process-per-connection model means that 1,000 concurrent connections consume significant memory and create scheduler contention long before the CPU is saturated with actual query work. SQL Server handles connections more efficiently with a thread pool, but unconstrained connection counts still hurt.</p>
+
+<p class="text-gray-300 leading-relaxed">A connection pooler sits between the application and the database, maintaining a smaller pool of persistent backend connections and multiplexing many application requests across them. This compression of connections is valuable on its own. When you combine it with multiple database nodes, the connection pooler becomes the natural location for load balancing logic: it knows the target nodes, their health, and can apply routing rules as it assigns an incoming request to a backend connection.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PgBouncer</strong> is the standard connection pooler for PostgreSQL. It operates in three modes: session pooling (one backend connection per client session, released when the client disconnects), transaction pooling (the backend connection is returned to the pool after each transaction), and statement pooling (the connection is released after each statement, which is incompatible with most applications). Transaction pooling is the production standard — it provides the best connection compression while remaining compatible with the vast majority of application patterns.</p>
+
+<p class="text-gray-300 leading-relaxed">Configuring PgBouncer for a two-node setup (one primary, one replica) with read/write splitting typically means running two PgBouncer instances or configuring two separate database sections in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pgbouncer.ini</code>, one pointing at the primary and one at the replica, and having the application or a higher-level proxy route to the appropriate PgBouncer endpoint.</p>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server, the native equivalent is built into the ADO.NET and ODBC connection poolers that ship with the driver. Applications using the Always On Availability Group listener benefit from the driver-level connection pooling combined with the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ApplicationIntent=ReadOnly</code> connection string parameter, which instructs the AG listener to route the connection to a readable secondary automatically.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check current connection usage relative to the configured maximum
+SELECT
+    count(*)                         AS total_connections,
+    count(*) FILTER (WHERE state = 'active')   AS active,
+    count(*) FILTER (WHERE state = 'idle')     AS idle,
+    count(*) FILTER (WHERE state = 'idle in transaction') AS idle_in_txn,
+    (SELECT setting::int FROM pg_settings WHERE name = 'max_connections') AS max_connections
+FROM pg_stat_activity
+WHERE backend_type = 'client backend';</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check current session and connection usage
+SELECT
+    COUNT(*)                         AS total_sessions,
+    SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END)  AS active_sessions,
+    SUM(CASE WHEN status = 'sleeping' THEN 1 ELSE 0 END) AS idle_sessions,
+    (SELECT value_in_use FROM sys.configurations
+     WHERE name = 'max connections')                      AS max_connections
+FROM sys.dm_exec_sessions
+WHERE is_user_process = 1;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">High numbers of idle-in-transaction connections in PostgreSQL are a common sign that the application is holding transactions open longer than necessary — perhaps because the connection pooler is not configured correctly or because the application code has slow processing between SQL statements within a transaction. These connections hold locks and prevent autovacuum from cleaning dead tuples. A well-tuned connection pool with reasonable idle-in-transaction timeouts prevents this from accumulating.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Tools for PostgreSQL Load Balancing: pgPool-II, HAProxy, and Patroni</h3>
+
+<p class="text-gray-300 leading-relaxed">PostgreSQL's load balancing story is built from composable open-source tools rather than a single integrated solution. The three most widely used components are pgPool-II, HAProxy, and Patroni, and most production architectures use at least two of them together.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">HAProxy</strong> is a general-purpose TCP/HTTP load balancer that is not PostgreSQL-specific but is extremely reliable and widely understood by operations teams. In a PostgreSQL context, HAProxy is used to route connections to the current primary — it does not understand SQL, but it can check the health of each node using custom health-check scripts that query the PostgreSQL replication state. A common pattern is a shell script or a small HTTP endpoint (provided by tools like <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_isready</code> or Patroni's REST API) that returns a success code on the primary and a failure code on replicas. HAProxy routes all connections to whichever node currently reports as primary. This gives you transparent failover: when the primary changes, HAProxy's health check detects the change within seconds and redirects traffic to the new primary without any application reconfiguration.</p>
+
+<p class="text-gray-300 leading-relaxed">HAProxy can also expose two separate frontend ports — one for read/write traffic (routed exclusively to the primary) and one for read-only traffic (load balanced across all healthy replicas using round-robin or least-connections). Applications that can separate their read and write connection strings benefit from this two-port pattern.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Patroni</strong> is a high-availability template for PostgreSQL that manages automatic failover using a distributed consensus store (etcd, ZooKeeper, or Consul) to elect and track the primary. Patroni exposes a REST API on each node that reports whether the node is currently the primary, a replica, or in an unknown state. HAProxy health checks consume this API directly, making HAProxy + Patroni a natural pairing. Patroni also handles the mechanics of promoting a standby to primary and reconfiguring the old primary as a new standby after a failover event, which is where HAProxy alone would leave a gap.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">pgPool-II</strong> takes a different architectural position. It is a full middleware layer that understands the PostgreSQL wire protocol and can parse SQL to make routing decisions. pgPool-II can inspect each query and route <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SELECT</code> statements to replicas and write operations to the primary without requiring application changes. It also provides connection pooling and query caching. The tradeoff is complexity: pgPool-II has a large configuration surface, adds latency for query parsing, and introduces a single point of failure if not deployed in an HA configuration itself. Teams that need transparent read/write splitting at the proxy layer without any application awareness often choose pgPool-II. Teams that can manage read/write splitting at the application or ORM layer typically prefer the simpler HAProxy + PgBouncer combination.</p>
+
+<p class="text-gray-300 leading-relaxed">The most resilient production architecture combines all three: Patroni manages automatic failover and primary election, HAProxy routes traffic to the correct node based on Patroni's health API, and PgBouncer pools connections in front of each PostgreSQL node to reduce connection overhead. The application talks to a single HAProxy VIP and has no awareness of which physical server is the current primary.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">SQL Server Always On and the Availability Group Listener</h3>
+
+<p class="text-gray-300 leading-relaxed">SQL Server's load balancing story is tightly integrated into the Always On Availability Groups feature, which has been the enterprise HA and read-scaling solution since SQL Server 2012. An Availability Group (AG) consists of a primary replica and one or more secondary replicas. The secondary replicas apply transaction log records from the primary in near real-time. Secondaries configured as readable secondaries can serve read-only queries while the primary handles all write traffic.</p>
+
+<p class="text-gray-300 leading-relaxed">The <strong class="text-white">Availability Group Listener</strong> is the key abstraction for load balancing. The listener is a virtual network name (VNN) backed by a virtual IP address that always points to the current primary replica. Applications connect to the listener name rather than to individual server names. When failover occurs and a new primary is elected, the listener's VIP moves to the new primary within seconds, and connections using the listener experience a brief reconnection event before automatically landing on the new primary.</p>
+
+<p class="text-gray-300 leading-relaxed">Read-only routing extends the listener to cover secondary replicas as well. When a client connects to the listener with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ApplicationIntent=ReadOnly</code> in the connection string, SQL Server's routing logic redirects that connection to one of the configured readable secondaries rather than the primary. You define the routing priority per secondary in the AG configuration, and SQL Server handles the redirection transparently.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server: Configure read-only routing for an Availability Group
+-- Run on the primary replica
+
+-- Step 1: Set the read-only routing URL for each replica
+ALTER AVAILABILITY GROUP [ProductionAG]
+MODIFY REPLICA ON N'SQLNode2' WITH (
+    SECONDARY_ROLE (
+        READ_ONLY_ROUTING_URL = N'TCP://sqlnode2.company.com:1433'
+    )
+);
+
+ALTER AVAILABILITY GROUP [ProductionAG]
+MODIFY REPLICA ON N'SQLNode3' WITH (
+    SECONDARY_ROLE (
+        READ_ONLY_ROUTING_URL = N'TCP://sqlnode3.company.com:1433'
+    )
+);
+
+-- Step 2: Set the routing list for the primary
+-- Connections with ApplicationIntent=ReadOnly will be sent to Node2 first,
+-- then Node3 if Node2 is unavailable
+ALTER AVAILABILITY GROUP [ProductionAG]
+MODIFY REPLICA ON N'SQLNode1' WITH (
+    PRIMARY_ROLE (
+        READ_ONLY_ROUTING_LIST = (N'SQLNode2', N'SQLNode3')
+    )
+);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">For PostgreSQL, there is no single equivalent configuration block, but the same routing intent can be expressed through PgBouncer or pgPool-II configuration:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- On each replica: verify the server is in hot standby mode
+-- (used by health-check scripts for HAProxy or pgPool-II)
+SELECT pg_is_in_recovery() AS is_replica,
+       pg_last_wal_receive_lsn() AS received_lsn,
+       pg_last_wal_replay_lsn()  AS replayed_lsn,
+       CASE
+           WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn()
+           THEN INTERVAL '0'
+           ELSE NOW() - pg_last_xact_replay_timestamp()
+       END AS estimated_lag;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">SQL Server's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">LOAD_BALANCE</code> option in the read-only routing list (introduced in SQL Server 2016) distributes <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ReadOnly</code> connections across multiple secondaries in round-robin fashion rather than always preferring the first available:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server 2016+: Enable load balancing across readable secondaries
+ALTER AVAILABILITY GROUP [ProductionAG]
+MODIFY REPLICA ON N'SQLNode1' WITH (
+    PRIMARY_ROLE (
+        READ_ONLY_ROUTING_LIST =
+            (('SQLNode2', 'SQLNode3'), 'SQLNode4')
+        -- SQLNode2 and SQLNode3 share load equally (load balanced set)
+        -- SQLNode4 is the fallback if both Node2 and Node3 are unavailable
+    )
+);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The parenthesized group <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">('SQLNode2', 'SQLNode3')</code> tells SQL Server to distribute <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ReadOnly</code> connections evenly between those two replicas. This is SQL Server's native read load balancing, and it requires no external proxy or application changes beyond the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ApplicationIntent=ReadOnly</code> connection string attribute.</p>
+
+<p class="text-gray-300 leading-relaxed">One important operational consideration with AG readable secondaries is the effect of long-running read queries on the secondary's ability to apply log records. In SQL Server, if a secondary is running a long <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SELECT</code> when the primary needs to truncate version store entries, SQL Server delays the cleanup. Heavy reporting queries on secondaries can cause version store growth on the primary. Monitoring <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_hadr_database_replica_states</code> for <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">redo_queue_size</code> and watching version store usage helps you catch this before it causes problems.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Health Checks, Failover Behavior, and Traffic Draining</h3>
+
+<p class="text-gray-300 leading-relaxed">Load balancing infrastructure is only as reliable as its health checks. A load balancer that continues sending traffic to a failed node, or one that incorrectly marks a healthy node as failed, creates outages worse than having no load balancer at all. Getting health checks right is one of the most production-critical details in the entire load balancing stack.</p>
+
+<p class="text-gray-300 leading-relaxed">For PostgreSQL with HAProxy, the health check is typically a TCP connect check combined with a custom HTTP check against Patroni's REST API. Patroni returns HTTP 200 for the primary and HTTP 503 for replicas (or a customizable response). HAProxy checks this endpoint every two seconds by default. The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">rise</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">fall</code> parameters control how many consecutive successes are required to mark a backend healthy and how many consecutive failures are required to mark it down. A typical production configuration uses <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">rise 2 fall 2</code> — two consecutive failures to take a node out of rotation, two consecutive successes to add it back. This prevents flapping from transient network hiccups.</p>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server with an AG listener, health checking is managed by Windows Server Failover Clustering (WSFC) or, in SQL Server 2019+, a Linux Pacemaker cluster. The AG's health check logic evaluates replica connectivity, log hardening status, and synchronization health. The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">HEALTH_CHECK_TIMEOUT</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">FAILURE_CONDITION_LEVEL</code>, and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SESSION_TIMEOUT</code> AG parameters control how aggressively the cluster declares the primary failed and initiates failover. Tuning these parameters is a balance between fast failover and false positives — a system under a heavy batch load might temporarily miss heartbeats without actually being failed, and an overly aggressive configuration would trigger unnecessary failovers.</p>
+
+<p class="text-gray-300 leading-relaxed">Traffic draining is the practice of gracefully removing a node from the load balancer pool before taking it offline for maintenance. Without traffic draining, in-flight queries are abruptly terminated when you stop the database process, causing errors in the application. A proper draining sequence marks the node as draining (no new connections routed to it), waits for existing connections to complete their transactions naturally or until a timeout expires, and then takes the process offline. HAProxy supports a <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">DRAIN</code> admin command for this purpose. SQL Server AG replicas can be configured to <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">SECONDARY_ROLE (ALLOW_CONNECTIONS = NO)</code> before maintenance to stop new read-only connections from being routed to that replica.</p>
+
+<p class="text-gray-300 leading-relaxed">Monitoring the load balancer's view of backend health is essential during and after any change. A node that remains in the load balancer pool after the database process has stopped — because the health check has not yet detected the failure — is a window during which the application receives connection errors. You can close this window by explicitly removing the backend from the load balancer pool as the first step of any planned maintenance procedure, before you stop the database.</p>
+
+<p class="text-gray-300 leading-relaxed">After a failover, there is one more subtle risk: connection pools in the application tier may still hold connections to the old primary, which is now a replica or a disconnected server. These stale connections will fail on the first operation after failover. Well-configured connection pools with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">connectionTimeout</code> settings and retry logic handle this gracefully. Poorly configured pools will surface errors to users until the connections time out naturally. Testing failover end-to-end — including measuring how long it takes for the application to recover, not just how long the database takes to promote a new primary — is something every team should run in a staging environment before trusting their load balancing setup in production.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Key Takeaways</h3>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Load balancing a database is fundamentally different from load balancing stateless services because writes must be serialized through a single primary and replication lag creates the risk of stale reads on replicas. Designing for these constraints is the first step before choosing any tool.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Read/write splitting multiplies read throughput horizontally but requires the application or proxy layer to be replication-lag-aware. Routing reads to a lagging replica for data that was just written is one of the most common correctness bugs introduced when adding replicas to a production system.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> PostgreSQL load balancing is assembled from composable tools: Patroni manages failover and primary election, HAProxy routes traffic based on health-check results, and PgBouncer pools connections at each node. SQL Server's Always On Availability Groups provide an integrated solution through the AG listener and native read-only routing, but they still benefit from external connection pooling at the application tier.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Health checks are the operational backbone of any load balancing setup. The `rise` and `fall` parameters, health check intervals, and failover thresholds all require deliberate tuning for your workload — defaults designed for development environments often cause flapping or slow failover detection in production.</li>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> Full-stack failover testing — measuring recovery time from the application's perspective, not just the database's — should be a regular operational exercise. Stale connection pools, misconfigured retry logic, and DNS TTL delays regularly extend the application-visible outage well beyond what the database-level failover metrics suggest.</li>
+    </div>
+    <div class="mt-14 bg-blue-950/40 border border-blue-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 flex justify-between text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The DBA Handbook</div>
+  </footer>
+</body>
+</html>
