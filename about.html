@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>About — Rajesh Guntupalli</title>
-  <meta name="description" content="DBA with deep expertise in PostgreSQL and SQL Server. Tool builder and author." />
+  <meta name="description" content="DBA with deep expertise in PostgreSQL and SQL Server. I build self-hosted database tools, write a book, and publish practical articles about database performance." />
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-950 text-gray-100 font-sans antialiased">
@@ -29,61 +29,125 @@
   </nav>
 
   <div class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
-    <div class="flex items-center gap-5 mb-10">
+
+    <!-- Header -->
+    <div class="flex items-center gap-5 mb-12">
       <div class="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-2xl font-bold text-white shadow-xl shadow-blue-900/40 shrink-0">RG</div>
       <div>
         <h1 class="text-3xl font-extrabold">Rajesh Guntupalli</h1>
-        <p class="text-blue-400 font-medium mt-1">Database Expert · Tool Builder · Author</p>
+        <p class="text-blue-400 font-medium mt-1">Database Engineer · Tool Builder · Author</p>
+        <a href="mailto:queryoptimizer78@gmail.com" class="text-xs text-gray-500 hover:text-gray-300 transition mt-1 inline-block">queryoptimizer78@gmail.com</a>
       </div>
     </div>
 
-    <div class="space-y-5 text-sm text-gray-400 leading-relaxed">
+    <!-- Bio -->
+    <div class="space-y-6 text-sm text-gray-400 leading-relaxed mb-14">
       <p>
-        I'm a DBA with deep experience in PostgreSQL and SQL Server. Over the years I've tuned thousands of slow queries,
-        designed indexing strategies for high-traffic databases, and helped teams get more out of their database infrastructure.
+        I'm a database engineer with deep experience in <strong class="text-white">PostgreSQL</strong> and
+        <strong class="text-white">SQL Server</strong>. I've spent years in the field tuning slow queries,
+        diagnosing production incidents, designing indexing strategies for high-traffic systems, and helping
+        engineering teams understand what their databases are actually doing.
       </p>
       <p>
-        I built <strong class="text-white">QueryOptimizer</strong> because I was tired of not having a good local tool for
-        diagnosing performance issues without sending data to the cloud. It's self-hosted, runs locally, and does
-        everything I need — EXPLAIN visualization, missing index detection, slow query tracking, and SQL anti-pattern analysis.
+        The pattern I kept running into was this: the best diagnostic tools were cloud-based SaaS products that
+        required uploading your query plans, connection strings, or schema to someone else's server. For many
+        teams — regulated industries, security-conscious orgs, or just people who prefer control — that's
+        not acceptable. So I started building my own.
       </p>
       <p>
-        I also built <strong class="text-white">DB Documenter</strong> — connect it to any PostgreSQL or SQL Server database
-        and get instant, searchable schema documentation. Tables, columns, indexes, foreign keys, views, and PDF export.
-        Your credentials never leave your machine.
+        <strong class="text-white">QueryOptimizer</strong> started as a set of scripts I ran locally to diagnose
+        performance problems. Over time it became a proper browser-based tool: EXPLAIN visualization, missing
+        index detection from live catalog data, and a slow query dashboard that reads directly from
+        pg_stat_statements and SQL Server DMVs. Everything runs locally. Nothing leaves your machine.
       </p>
       <p>
-        I'm writing <strong class="text-white">Database Mastery</strong> — a practical book that covers everything
-        I wish I'd known earlier in my career. PostgreSQL and SQL Server, real-world indexing, query rewriting,
-        execution plans, and how AI tools are changing the DBA role. Free to read online.
+        <strong class="text-white">DB Documenter</strong> came from a different frustration — onboarding new
+        engineers to a large database and realizing there was no clean way to share the schema. Existing tools
+        either required cloud connectivity or produced documentation that was outdated within a week.
+        DB Documenter connects to the live database and generates an always-current, searchable reference in seconds.
       </p>
       <p>
-        On this blog I write about database performance, AI + databases, and the tools and techniques I use every day.
+        I'm also writing <strong class="text-white">The DBA Handbook</strong>, a practical guide to PostgreSQL
+        and SQL Server that builds from core concepts to production-level performance work. It's free to read
+        online, updated as new chapters are published. The goal is to write the book I wished existed when I
+        was starting out — technical, direct, and focused on real problems.
+      </p>
+      <p>
+        The blog covers database performance, AI tools for DBAs, query optimization techniques, and whatever
+        I'm figuring out in the field. No filler, no beginner tutorials repeated for SEO — just things that
+        are actually useful if you work with databases professionally.
       </p>
     </div>
 
-    <div class="mt-10 grid md:grid-cols-3 gap-4">
-      <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-5 text-center">
-        <p class="text-2xl font-bold text-white mb-1">PostgreSQL</p>
-        <p class="text-xs text-gray-500">12 · 13 · 14 · 15 · 16 · 17</p>
-      </div>
-      <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-5 text-center">
-        <p class="text-2xl font-bold text-white mb-1">SQL Server</p>
-        <p class="text-xs text-gray-500">2016 · 2017 · 2019 · 2022</p>
-      </div>
-      <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-5 text-center">
-        <p class="text-2xl font-bold text-white mb-1">2 Tools</p>
-        <p class="text-xs text-gray-500">QueryOptimizer · DB Documenter</p>
+    <!-- Expertise -->
+    <div class="mb-14">
+      <h2 class="text-sm font-semibold text-white uppercase tracking-widest mb-5">Expertise</h2>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-4 text-center">
+          <p class="font-semibold text-white text-sm">PostgreSQL</p>
+          <p class="text-xs text-gray-500 mt-1">v12 – v17</p>
+        </div>
+        <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-4 text-center">
+          <p class="font-semibold text-white text-sm">SQL Server</p>
+          <p class="text-xs text-gray-500 mt-1">2016 – 2022</p>
+        </div>
+        <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-4 text-center">
+          <p class="font-semibold text-white text-sm">Query Tuning</p>
+          <p class="text-xs text-gray-500 mt-1">EXPLAIN · DMVs</p>
+        </div>
+        <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-4 text-center">
+          <p class="font-semibold text-white text-sm">AI + Databases</p>
+          <p class="text-xs text-gray-500 mt-1">Claude · GPT</p>
+        </div>
       </div>
     </div>
 
-    <div class="mt-10 pt-8 border-t border-gray-800/50">
-      <p class="text-sm text-gray-400 mb-4">Get in touch</p>
+    <!-- What I'm building -->
+    <div class="mb-14">
+      <h2 class="text-sm font-semibold text-white uppercase tracking-widest mb-5">What I'm building</h2>
+      <div class="space-y-4">
+        <div class="flex gap-4 p-5 bg-gray-900/60 border border-gray-800 rounded-xl">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+          </div>
+          <div>
+            <p class="font-semibold text-white text-sm">QueryOptimizer — $149</p>
+            <p class="text-xs text-gray-400 mt-1">Self-hosted SQL performance workbench. EXPLAIN visualizer, index advisor, slow query dashboard. PostgreSQL + SQL Server.</p>
+            <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686" class="text-xs text-blue-400 hover:text-blue-300 transition mt-2 inline-block">Buy →</a>
+          </div>
+        </div>
+        <div class="flex gap-4 p-5 bg-gray-900/60 border border-gray-800 rounded-xl">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          </div>
+          <div>
+            <p class="font-semibold text-white text-sm">DB Documenter — $99</p>
+            <p class="text-xs text-gray-400 mt-1">Auto-generate schema documentation from any live database. Tables, columns, indexes, foreign keys, views. PDF export. Self-hosted.</p>
+            <a href="products.html" class="text-xs text-blue-400 hover:text-blue-300 transition mt-2 inline-block">Buy →</a>
+          </div>
+        </div>
+        <div class="flex gap-4 p-5 bg-gray-900/60 border border-gray-800 rounded-xl">
+          <div class="w-8 h-8 rounded-lg bg-purple-900/60 border border-purple-800/40 flex items-center justify-center shrink-0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#c084fc" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          </div>
+          <div>
+            <p class="font-semibold text-white text-sm">The DBA Handbook — Free</p>
+            <p class="text-xs text-gray-400 mt-1">40 chapters covering PostgreSQL and SQL Server from core concepts to production performance work. Published chapter by chapter, online and free.</p>
+            <a href="book.html" class="text-xs text-purple-400 hover:text-purple-300 transition mt-2 inline-block">Read →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Contact -->
+    <div class="pt-8 border-t border-gray-800/50">
+      <p class="text-sm text-gray-400 mb-4">Get in touch — questions, feedback, or just to say hello.</p>
       <a href="mailto:queryoptimizer78@gmail.com"
          class="inline-flex items-center gap-2 px-5 py-2.5 border border-gray-700 hover:border-gray-500 text-gray-300 hover:text-white rounded-xl text-sm transition">
         queryoptimizer78@gmail.com
       </a>
     </div>
+
   </div>
 
   <footer class="border-t border-gray-800/50 px-6 py-8">
