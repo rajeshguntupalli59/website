@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 4: AI-Assisted Query Tuning — The AI-Powered DBA</title>
+  <meta name="description" content="The AI-Powered DBA Chapter 4: AI-Assisted Query Tuning. AI and AIOps for PostgreSQL and SQL Server, by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-violet-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html"   class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"       class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Books</a>
+        <a href="index.html"         class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Book 2 Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-violet-400 hover:text-violet-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-violet-900/40 border border-violet-800/40 text-violet-300 text-xs rounded-full font-medium">Chapter 4 of 20</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 4: AI-Assisted Query Tuning</h2>
+
+<p class="text-gray-300 leading-relaxed">Query tuning has always been one of the most intellectually demanding responsibilities in a DBA's career. It requires reading execution plans, understanding statistics, reasoning about data distribution, and knowing the quirks of a specific optimizer — all while working against a production incident clock. But even seasoned DBAs hit ceilings: query volumes scale faster than human attention, and the combinatorial space of possible optimizations grows with every schema change, index addition, or statistics refresh. This chapter explores how AI models — specifically large language models and ML-based plan analysis tools — change the economics of query tuning. You'll learn how to feed real execution plans into LLM APIs, build Python pipelines that automate slow query triage, and integrate AI-driven query advice into CI/CD workflows with appropriate guardrails to prevent regressions in production.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Why Manual Query Tuning Doesn't Scale</h3>
+
+<p class="text-gray-300 leading-relaxed">The traditional query tuning workflow has a well-known shape: capture slow queries from the slow query log or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_statements</code>, pull the execution plan, inspect join order and index usage, hypothesize about missing indexes or stale statistics, test a fix, measure improvement, repeat. In a small shop running a few hundred queries, this process works. At scale — thousands of distinct query fingerprints, dozens of microservices each generating their own query patterns, schema migrations landing weekly — it collapses.</p>
+
+<p class="text-gray-300 leading-relaxed">Consider what happens during a Black Friday traffic spike. Query latency climbs across fifty different endpoints simultaneously. A DBA manually triaging that event must prioritize, and prioritization itself is a skill that requires context most tools don't provide automatically. Which query is causing the most aggregate CPU burn? Which one is blocked on a lock held by another session? Which degraded because a new index was dropped during a deployment an hour ago? Answering these questions manually requires correlating data from multiple sources: <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_activity</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_query_stats</code>, APM dashboards, and deployment logs.</p>
+
+<p class="text-gray-300 leading-relaxed">The other scaling problem is *knowledge portability*. A senior DBA who has tuned the same application's queries for three years carries enormous implicit knowledge about its data distribution, its seasonal patterns, and which execution plans tend to regress after certain schema changes. When that person is unavailable or moves on, the institutional memory walks out the door. Junior DBAs face execution plans with no narrative context, no historical comparison, and no quick way to know whether a nested loop join on this particular table is catastrophically wrong or perfectly appropriate given a three-row result set.</p>
+
+<p class="text-gray-300 leading-relaxed">AI doesn't eliminate the need for DBA expertise — it acts as a force multiplier. An LLM trained on vast corpora of query optimization literature, Stack Overflow threads, PostgreSQL and SQL Server documentation, and execution plan analysis can serve as a knowledgeable first responder: triaging at scale, generating hypotheses, and drafting recommendations that a DBA then validates rather than inventing from scratch.</p>
+
+<p class="text-gray-300 leading-relaxed">The cost math also shifts. A DBA manually analyzing one complex execution plan might take fifteen to forty-five minutes. An LLM API call costs fractions of a cent and completes in seconds. Even accounting for the DBA review time required to validate AI recommendations, the throughput improvement is substantial.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">How AI Models Analyze Query Plans</h3>
+
+<p class="text-gray-300 leading-relaxed">Before building integrations, it's worth understanding what AI models actually see when they receive a query plan, and why that input format matters considerably.</p>
+
+<p class="text-gray-300 leading-relaxed">Modern LLMs are text transformers. They reason well about structured text, code, and documents — and execution plans, fortunately, are structured text. Both PostgreSQL's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)</code> and SQL Server's XML showplan output encode the plan tree as hierarchical text or XML that LLMs parse effectively. However, raw XML showplans from SQL Server can be enormous. Chunking, summarization, and format choices matter in practice.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Capture a rich plan for AI analysis
+EXPLAIN (ANALYZE, BUFFERS, VERBOSE, FORMAT TEXT)
+SELECT
+    o.order_id,
+    c.email,
+    SUM(li.quantity * li.unit_price) AS order_total
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+JOIN line_items li ON o.order_id = li.order_id
+WHERE o.created_at &gt;= NOW() - INTERVAL '30 days'
+  AND o.status = 'pending'
+GROUP BY o.order_id, c.email
+HAVING SUM(li.quantity * li.unit_price) &gt; 500
+ORDER BY order_total DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Capture actual execution plan with runtime statistics
+SET STATISTICS IO ON;
+SET STATISTICS TIME ON;
+
+SELECT
+    o.order_id,
+    c.email,
+    SUM(li.quantity * li.unit_price) AS order_total
+FROM dbo.orders o
+JOIN dbo.customers c ON o.customer_id = c.customer_id
+JOIN dbo.line_items li ON o.order_id = li.order_id
+WHERE o.created_at &gt;= DATEADD(DAY, -30, GETDATE())
+  AND o.status = 'pending'
+GROUP BY o.order_id, c.email
+HAVING SUM(li.quantity * li.unit_price) &gt; 500
+ORDER BY order_total DESC
+OPTION (RECOMPILE);
+
+-- For AI ingestion, prefer text plan over XML for smaller payloads
+-- XML plan via: SET SHOWPLAN_XML ON or sys.dm_exec_query_plan()</code></pre>
+
+<p class="text-gray-300 leading-relaxed">When feeding plans to an LLM, the most productive inputs include: the raw query text, the full EXPLAIN ANALYZE output with buffer statistics, table row counts and approximate column cardinality, and the observed runtime. Richer context yields better advice. An LLM that sees a nested loop join and also knows the inner table has 50 million rows will immediately flag this as a cardinality estimation problem. The same LLM without that context might suggest query restructuring when the real problem is a missing index.</p>
+
+<p class="text-gray-300 leading-relaxed">What LLMs excel at in plan analysis:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Pattern recognition.</strong> LLMs have processed thousands of examples of "this plan shape causes this problem." A filter pushed below a hash join that should have been above it, a sequence scan on a column with high selectivity, implicit type coercions preventing index use — these patterns appear repeatedly in training data.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Explaining optimizer decisions.</strong> LLMs can narrate *why* the optimizer made a choice in plain language, which is particularly useful when a junior DBA or developer is reading the recommendation.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Cross-referencing with schema context.</strong> When you include CREATE TABLE statements or index definitions with your prompt, the LLM can identify mismatches: a query filtering on <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">lower(email)</code> with no functional index, or a covering index that's almost useful but missing one column.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Generating candidate fixes.</strong> Rather than just identifying a problem, well-prompted LLMs generate concrete SQL: the specific <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">CREATE INDEX</code> statement, the rewritten query with a lateral join instead of a correlated subquery, the query hint to force a specific join order.</p>
+
+<p class="text-gray-300 leading-relaxed">Where LLMs are weaker: they cannot run the query, they have no live access to your statistics, and they can confidently produce wrong recommendations when plan text is ambiguous or context is missing. This is precisely why the human review step remains mandatory, and why production guardrails — covered later in this chapter — are not optional.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Using Claude and GPT APIs to Analyze and Rewrite Slow Queries</h3>
+
+<p class="text-gray-300 leading-relaxed">The practical integration starts with a Python function that accepts a slow query plus its execution plan and returns structured AI analysis. The following example uses the Anthropic Claude API, which performs particularly well on technical text with precise reasoning requirements. Equivalent logic works with OpenAI's GPT-4o via the same pattern.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import anthropic
+import json
+import psycopg2
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class QueryAnalysisRequest:
+    query_text: str
+    execution_plan: str
+    table_schemas: Optional[str] = None
+    avg_duration_ms: Optional[float] = None
+    calls_per_hour: Optional[int] = None
+    database_type: str = "postgresql"  # or "sqlserver"
+
+@dataclass
+class QueryAnalysisResult:
+    root_cause: str
+    severity: str  # "critical", "high", "medium", "low"
+    recommendations: list[str]
+    rewritten_query: Optional[str]
+    index_suggestions: list[str]
+    confidence: str  # "high", "medium", "low"
+
+def analyze_slow_query(request: QueryAnalysisRequest) -&gt; QueryAnalysisResult:
+    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
+
+    context_block = ""
+    if request.avg_duration_ms:
+        context_block += f"Average execution time: {request.avg_duration_ms:.1f}ms\n"
+    if request.calls_per_hour:
+        context_block += f"Call frequency: {request.calls_per_hour} calls/hour\n"
+    if request.table_schemas:
+        context_block += f"\nRelevant schema:\n{request.table_schemas}\n"
+
+    prompt = f"""You are a senior database performance engineer specializing in {request.database_type}.
+Analyze the following slow query and its execution plan, then provide structured recommendations.
+
+{context_block}
+
+QUERY:
+{request.query_text}
+
+EXECUTION PLAN:
+{request.execution_plan}
+
+Respond in valid JSON with this exact structure:
+{{
+  "root_cause": "concise description of the primary performance problem",
+  "severity": "critical|high|medium|low",
+  "recommendations": ["recommendation 1", "recommendation 2"],
+  "rewritten_query": "improved SQL or null if query rewrite is not needed",
+  "index_suggestions": ["CREATE INDEX statement 1", "CREATE INDEX statement 2"],
+  "confidence": "high|medium|low",
+  "confidence_rationale": "brief explanation of your confidence level"
+}}
+
+Be specific. Reference actual table names, column names, and plan nodes from the provided input.
+Do not suggest generic best practices. Only suggest what the plan evidence supports."""
+
+    message = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=2048,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    raw_response = message.content[0].text
+    # Strip markdown code fences if present
+    if raw_response.startswith("```"):
+        raw_response = raw_response.split("```")[1]
+        if raw_response.startswith("json"):
+            raw_response = raw_response[4:]
+
+    parsed = json.loads(raw_response)
+
+    return QueryAnalysisResult(
+        root_cause=parsed["root_cause"],
+        severity=parsed["severity"],
+        recommendations=parsed["recommendations"],
+        rewritten_query=parsed.get("rewritten_query"),
+        index_suggestions=parsed.get("index_suggestions", []),
+        confidence=parsed["confidence"]
+    )</code></pre>
+
+<p class="text-gray-300 leading-relaxed">This function is deliberately simple — it handles one query at a time, returns structured output, and fails loudly on JSON parse errors rather than silently swallowing bad responses. In production you'll want retry logic, response validation, and cost tracking, but the core pattern holds.</p>
+
+<p class="text-gray-300 leading-relaxed">To feed this function from a live PostgreSQL slow query pipeline:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>def get_slow_queries_with_plans(conn_string: str, min_duration_ms: float = 1000.0):
+    """
+    Pull slow queries from pg_stat_statements and capture their plans.
+    Requires pg_stat_statements extension and EXPLAIN privilege.
+    """
+    conn = psycopg2.connect(conn_string)
+    cursor = conn.cursor()
+
+    # Identify top slow queries by total_exec_time
+    cursor.execute("""
+        SELECT
+            queryid,
+            query,
+            calls,
+            total_exec_time / calls AS avg_exec_ms,
+            (calls / (EXTRACT(EPOCH FROM NOW() - stats_reset) / 3600))::int AS calls_per_hour
+        FROM pg_stat_statements
+        WHERE total_exec_time / calls &gt; %s
+          AND calls &gt; 10  -- filter out one-off queries
+          AND query NOT LIKE '%%pg_stat%%'  -- exclude meta-queries
+        ORDER BY total_exec_time DESC
+        LIMIT 20
+    """, (min_duration_ms,))
+
+    slow_queries = cursor.fetchall()
+    results = []
+
+    for queryid, query_text, calls, avg_ms, cph in slow_queries:
+        try:
+            # Capture EXPLAIN output — use a read transaction to avoid side effects
+            cursor.execute(f"EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) {query_text}")
+            plan_rows = cursor.fetchall()
+            plan_text = "\n".join(row[0] for row in plan_rows)
+
+            results.append(QueryAnalysisRequest(
+                query_text=query_text,
+                execution_plan=plan_text,
+                avg_duration_ms=avg_ms,
+                calls_per_hour=cph
+            ))
+        except Exception as e:
+            # EXPLAIN may fail for parameterized queries — log and skip
+            print(f"Could not explain queryid {queryid}: {e}")
+            continue
+
+    cursor.close()
+    conn.close()
+    return results</code></pre>
+
+<p class="text-gray-300 leading-relaxed">One practical note: <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_statements</code> stores normalized queries with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">$1</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">$2</code> parameter placeholders. Running <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">EXPLAIN ANALYZE</code> on these will fail because PostgreSQL needs literal values. In production, you'll either need to substitute representative values (obtainable from query logs or application parameter logs), or use <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">EXPLAIN</code> without <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ANALYZE</code> to get an estimated plan — which is less informative but still useful for pattern detection.</p>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server, the equivalent pull comes from <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_query_stats</code> joined to <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_sql_text</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_query_plan</code>:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Top 20 most expensive queries by average CPU time
+SELECT TOP 20
+    qs.total_elapsed_time / qs.execution_count / 1000.0 AS avg_elapsed_ms,
+    qs.execution_count,
+    qs.total_logical_reads / qs.execution_count AS avg_logical_reads,
+    st.text AS query_text,
+    qp.query_plan AS xml_plan,
+    qs.sql_handle,
+    qs.plan_handle
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+WHERE qs.execution_count &gt; 10
+  AND qs.total_elapsed_time / qs.execution_count &gt; 1000000  -- &gt; 1 second avg
+  AND st.text NOT LIKE '%sys.dm_exec%'
+ORDER BY qs.total_elapsed_time / qs.execution_count DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The XML plan from SQL Server is verbose. For LLM ingestion, you have two options: pass the XML directly (works well for Claude and GPT-4 with long context windows, but tokens cost money), or pre-process the XML to extract the most diagnostically relevant nodes — the physical operation types, estimated vs. actual row counts, and warning nodes — before sending. A lightweight XML parser that extracts <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">RelOp</code> elements with high row count estimation errors gives you a compressed, signal-dense input that costs far fewer tokens.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Building an Automated Query Tuning Pipeline</h3>
+
+<p class="text-gray-300 leading-relaxed">A one-off API call is a useful experiment. What DBAs actually need is a pipeline that continuously monitors slow queries, routes them to AI analysis, stores the results, and surfaces actionable recommendations through channels the team already uses — Slack, JIRA, PagerDuty, or a custom dashboard.</p>
+
+<p class="text-gray-300 leading-relaxed">The following architecture uses PostgreSQL as both the monitored database and the recommendation store (you can substitute any database for the latter), with a Python scheduler driving the analysis loop.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import schedule
+import time
+import logging
+from datetime import datetime
+import psycopg2
+from psycopg2.extras import Json
+
+# Assumes analyze_slow_query() and get_slow_queries_with_plans() from earlier
+
+MONITORING_DSN = "postgresql://monitor_user:pass@prod-primary:5432/appdb"
+RECOMMENDATIONS_DSN = "postgresql://dba_user:pass@dba-tools:5432/dba_operations"
+
+def setup_recommendations_table():
+    """Create the table that stores AI-generated tuning recommendations."""
+    conn = psycopg2.connect(RECOMMENDATIONS_DSN)
+    conn.autocommit = True
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS query_tuning_recommendations (
+            id SERIAL PRIMARY KEY,
+            analyzed_at TIMESTAMPTZ DEFAULT NOW(),
+            database_host TEXT NOT NULL,
+            query_fingerprint TEXT NOT NULL,
+            query_text TEXT NOT NULL,
+            avg_duration_ms NUMERIC,
+            severity TEXT CHECK (severity IN ('critical','high','medium','low')),
+            root_cause TEXT,
+            recommendations JSONB,
+            rewritten_query TEXT,
+            index_suggestions JSONB,
+            ai_confidence TEXT,
+            review_status TEXT DEFAULT 'pending'
+                CHECK (review_status IN ('pending','approved','rejected','implemented')),
+            reviewed_by TEXT,
+            reviewed_at TIMESTAMPTZ,
+            UNIQUE (database_host, query_fingerprint, analyzed_at::date)
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_qtr_severity_status
+        ON query_tuning_recommendations (severity, review_status, analyzed_at DESC)
+    """)
+    cursor.close()
+    conn.close()
+
+def run_analysis_cycle(db_host: str, monitoring_dsn: str):
+    logging.info(f"Starting analysis cycle for {db_host}")
+
+    try:
+        slow_query_requests = get_slow_queries_with_plans(monitoring_dsn)
+    except Exception as e:
+        logging.error(f"Failed to collect slow queries from {db_host}: {e}")
+        return
+
+    rec_conn = psycopg2.connect(RECOMMENDATIONS_DSN)
+    rec_cursor = rec_conn.cursor()
+
+    for request in slow_query_requests:
+        try:
+            result = analyze_slow_query(request)
+
+            # Only store if severity is high enough to warrant attention
+            if result.severity in ('critical', 'high', 'medium'):
+                import hashlib
+                fingerprint = hashlib.md5(request.query_text.encode()).hexdigest()
+
+                rec_cursor.execute("""
+                    INSERT INTO query_tuning_recommendations
+                        (database_host, query_fingerprint, query_text, avg_duration_ms,
+                         severity, root_cause, recommendations, rewritten_query,
+                         index_suggestions, ai_confidence)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (database_host, query_fingerprint, analyzed_at::date)
+                    DO UPDATE SET
+                        avg_duration_ms = EXCLUDED.avg_duration_ms,
+                        severity = EXCLUDED.severity,
+                        root_cause = EXCLUDED.root_cause,
+                        recommendations = EXCLUDED.recommendations
+                """, (
+                    db_host,
+                    fingerprint,
+                    request.query_text,
+                    request.avg_duration_ms,
+                    result.severity,
+                    result.root_cause,
+                    Json(result.recommendations),
+                    result.rewritten_query,
+                    Json(result.index_suggestions),
+                    result.confidence
+                ))
+
+                if result.severity == 'critical':
+                    send_slack_alert(db_host, request, result)
+
+        except Exception as e:
+            logging.error(f"Analysis failed for query: {e}")
+            continue
+
+    rec_conn.commit()
+    rec_cursor.close()
+    rec_conn.close()
+    logging.info(f"Analysis cycle complete. Processed {len(slow_query_requests)} queries.")
+
+def send_slack_alert(db_host: str, request: QueryAnalysisRequest, result: QueryAnalysisResult):
+    """Send critical findings to Slack. Requires SLACK_WEBHOOK_URL in environment."""
+    import os, requests
+
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        return
+
+    blocks = {
+        "text": f":rotating_light: Critical query performance issue on `{db_host}`",
+        "blocks": [
+            {"type": "header", "text": {"type": "plain_text",
+                "text": f"Critical Query Issue: {db_host}"}},
+            {"type": "section", "text": {"type": "mrkdwn",
+                "text": f"*Root Cause:* {result.root_cause}\n"
+                        f"*Avg Duration:* {request.avg_duration_ms:.0f}ms\n"
+                        f"*Confidence:* {result.confidence}"}},
+            {"type": "section", "text": {"type": "mrkdwn",
+                "text": f"*Top Recommendation:*\n{result.recommendations[0] if result.recommendations else 'See database dashboard'}"}},
+        ]
+    }
+
+    requests.post(webhook_url, json=blocks, timeout=5)
+
+# Schedule the analysis to run every 15 minutes
+schedule.every(15).minutes.do(run_analysis_cycle, db_host="prod-primary", monitoring_dsn=MONITORING_DSN)
+
+if __name__ == "__main__":
+    setup_recommendations_table()
+    logging.basicConfig(level=logging.INFO)
+    while True:
+        schedule.run_pending()
+        time.sleep(30)</code></pre>
+
+<p class="text-gray-300 leading-relaxed">This pipeline has several intentional design choices worth noting. First, it deduplicates by day — if the same query is already flagged today, we update rather than insert, reducing recommendation noise. Second, Slack alerts are reserved for <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">critical</code> severity only; medium and high findings go into the database table where a DBA can review them during normal working hours. Third, analysis failures are logged and skipped rather than crashing the cycle — a bad plan or an API timeout shouldn't stop analysis of the other nineteen queries in the batch.</p>
+
+<p class="text-gray-300 leading-relaxed">The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">review_status</code> column on the recommendations table is intentional. AI recommendations should flow through human review before implementation. This table becomes the basis for a lightweight approval workflow, which the next section covers in the context of CI/CD integration.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Integrating AI Query Analysis into Your CI/CD Pipeline</h3>
+
+<p class="text-gray-300 leading-relaxed">Query tuning done reactively — after slowdowns appear in production — is inherently catching up to problems. The more valuable insertion point is *before* deployment: analyzing queries introduced by new application code before they touch production data volumes.</p>
+
+<p class="text-gray-300 leading-relaxed">Modern application deployments typically include database migrations. Those migrations often introduce new queries — either explicitly in migration scripts or implicitly through ORM schema changes that generate new query patterns. Adding an AI query analysis gate to your CI/CD pipeline catches anti-patterns at review time, not at 2 AM.</p>
+
+<p class="text-gray-300 leading-relaxed">The following GitHub Actions workflow shows how to wire this into a standard application deployment pipeline. It assumes you're using a staging PostgreSQL instance that mirrors production schema and has representative data (or at least a realistic subset).</p>
+
+    </div>
+    <div class="mt-14 bg-violet-950/40 border border-violet-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The AI-Powered DBA</div>
+  </footer>
+</body>
+</html>
