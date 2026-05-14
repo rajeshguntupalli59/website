@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 5: Machine Learning for Performance Forecasting — The AI-Powered DBA</title>
+  <meta name="description" content="The AI-Powered DBA Chapter 5: Machine Learning for Performance Forecasting. AI and AIOps for PostgreSQL and SQL Server, by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-violet-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html"   class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"       class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Books</a>
+        <a href="index.html"         class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Book 2 Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-violet-400 hover:text-violet-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-violet-900/40 border border-violet-800/40 text-violet-300 text-xs rounded-full font-medium">Chapter 5 of 20</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 5: Machine Learning for Performance Forecasting</h2>
+
+<p class="text-gray-300 leading-relaxed">Performance problems in production databases rarely arrive without warning. The warning signs are almost always there — gradual query regressions, slowly climbing I/O wait times, buffer cache hit rates creeping downward — but traditional monitoring tools only show you what's happening right now, not what's about to happen. Machine learning changes that equation. Instead of reacting to alerts, DBAs can train models on historical performance data to forecast future resource consumption, predict query degradation before it impacts users, and schedule maintenance windows with confidence. This chapter walks through the full arc of applying ML to database performance forecasting: selecting the right models for the right signals, building feature engineering pipelines from real database telemetry, training and validating forecasting models, and wiring the outputs into automated response workflows that act before an incident page goes out.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">From Reactive Monitoring to Predictive Intelligence</h3>
+
+<p class="text-gray-300 leading-relaxed">The gap between monitoring and forecasting is not just philosophical — it has operational consequences. A monitoring system tells you that CPU is at 92%. A forecasting system tells you that CPU will breach 85% in four hours based on the last 30 days of patterns, and that the primary contributor will be a batch job whose query plan started degrading two weeks ago when a statistics update silently went wrong.</p>
+
+<p class="text-gray-300 leading-relaxed">Traditional threshold-based alerting has three fundamental problems for production DBAs. First, thresholds are static, but workloads are not. A buffer pool hit rate of 94% is fine at 2 AM and catastrophic during end-of-quarter reporting. Second, alerts fire after the breach, giving you minutes to respond to something that took weeks to develop. Third, they generate noise without context — an alert that CPU spiked doesn't tell you why or whether it will repeat.</p>
+
+<p class="text-gray-300 leading-relaxed">ML-based forecasting addresses all three. Time-series models learn the seasonal patterns in your workload — daily, weekly, monthly, end-of-quarter — and produce confidence intervals rather than binary good/bad states. Feature-based regression models learn the *relationships* between metrics, so they can tell you not just that CPU will be high, but that it will be high because TempDB allocation is trending upward and your most expensive report query has a new hash join in its plan.</p>
+
+<p class="text-gray-300 leading-relaxed">The starting point for any forecasting initiative is instrumenting your telemetry collection. Most production environments already have the raw data in places like <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_statements</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_query_stats</code>, Prometheus exporters, and OS-level metrics. The problem is that this data is collected at fixed intervals and often discarded after 30 days. Effective ML forecasting requires at minimum 90 days of history to capture monthly patterns, and 12 months or more to capture quarterly business cycles.</p>
+
+<p class="text-gray-300 leading-relaxed">Before writing a single line of Python, audit what you have:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Check how much query statistics history is retained
+-- and how many distinct query fingerprints we're tracking
+SELECT 
+    COUNT(DISTINCT queryid)                          AS distinct_queries,
+    MIN(stats_reset)                                 AS stats_since,
+    NOW() - MIN(stats_reset)                         AS history_age,
+    SUM(calls)                                       AS total_executions,
+    SUM(total_exec_time) / 1000 / 3600              AS total_exec_hours,
+    ROUND(AVG(mean_exec_time)::numeric, 2)          AS avg_exec_ms_across_all
+FROM pg_stat_statements
+JOIN pg_database d ON d.oid = dbid
+WHERE d.datname = current_database();</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Equivalent audit of Query Store coverage and retention
+SELECT 
+    COUNT(DISTINCT q.query_id)                       AS distinct_queries,
+    MIN(rs.last_execution_time)                      AS earliest_recorded,
+    DATEDIFF(DAY, MIN(rs.last_execution_time), 
+             GETUTCDATE())                           AS history_days,
+    SUM(rs.count_executions)                         AS total_executions,
+    SUM(rs.avg_duration * rs.count_executions) 
+        / 1e6 / 3600                                 AS total_exec_hours,
+    ROUND(AVG(rs.avg_duration) / 1000.0, 2)         AS avg_exec_ms_across_all
+FROM sys.query_store_query q
+JOIN sys.query_store_plan p  ON p.query_id = q.query_id
+JOIN sys.query_store_runtime_stats rs 
+                              ON rs.plan_id = p.plan_id
+WHERE q.is_internal_query = 0;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">If your history is thin, the first operational action is configuring longer retention before you do anything with ML. In SQL Server, increase <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">DATA_FLUSH_INTERVAL_SECONDS</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">QUERY_CAPTURE_MODE</code> in Query Store settings. In PostgreSQL, pair <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_statements</code> with a custom collector that snapshots statistics to a history table on a schedule — more on this architecture in the next section.</p>
+
+<p class="text-gray-300 leading-relaxed">The other important realization here is that not every metric is equally forecastable. CPU and I/O tend to be highly seasonal and respond well to time-series models. Individual query latency is noisier, driven by data distribution changes and plan instability, and often needs feature-based approaches. Lock contention is nearly stochastic when viewed in isolation, but becomes predictable when you engineer the right features. Understanding this hierarchy — what you're trying to predict, and with what degree of confidence — shapes the model selection decisions that come next.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Building a Feature-Rich Telemetry Pipeline</h3>
+
+<p class="text-gray-300 leading-relaxed">Raw database metrics are not ML features. A number like <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">buffers_hit = 14,293,812</code> has no predictive value on its own. What matters is the rate of change, the ratio to related metrics, the deviation from the historical baseline at the same time of week, and how these values correlate with downstream outcomes like query latency or connection saturation. The work of transforming raw telemetry into ML-ready features is called feature engineering, and for database performance forecasting it is where most of the model quality gets determined.</p>
+
+<p class="text-gray-300 leading-relaxed">The recommended architecture for a production telemetry pipeline is: database metrics collectors → a time-series store (Prometheus with long-term storage via Thanos or VictoriaMetrics, or TimescaleDB if you prefer PostgreSQL-native) → a feature engineering layer → a feature store or ML training dataset. This keeps raw telemetry separate from derived features, which is important when you need to retrain models without re-collecting data.</p>
+
+<p class="text-gray-300 leading-relaxed">For PostgreSQL environments, a practical collector looks like this:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import psycopg2
+import psycopg2.extras
+import pandas as pd
+from datetime import datetime, timezone
+import time
+
+# Connects to the monitored PG instance and extracts a telemetry snapshot
+# Returns a dict of named metrics suitable for feature engineering
+
+def collect_pg_snapshot(conn_str: str) -&gt; dict:
+    conn = psycopg2.connect(conn_str)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    snapshot = {"collected_at": datetime.now(timezone.utc).isoformat()}
+
+    # Buffer cache efficiency
+    cur.execute("""
+        SELECT 
+            SUM(blks_hit) AS blks_hit,
+            SUM(blks_read) AS blks_read,
+            ROUND(
+                SUM(blks_hit)::numeric / 
+                NULLIF(SUM(blks_hit) + SUM(blks_read), 0) * 100, 4
+            ) AS cache_hit_ratio
+        FROM pg_stat_database
+        WHERE datname NOT IN ('template0', 'template1');
+    """)
+    snapshot.update(dict(cur.fetchone()))
+
+    # Active connection pressure
+    cur.execute("""
+        SELECT 
+            COUNT(*) FILTER (WHERE state = 'active')         AS active_conns,
+            COUNT(*) FILTER (WHERE state = 'idle')           AS idle_conns,
+            COUNT(*) FILTER (WHERE wait_event_type = 'Lock') AS lock_waiters,
+            MAX(EXTRACT(EPOCH FROM (NOW() - query_start)))
+                FILTER (WHERE state = 'active')              AS max_query_age_sec
+        FROM pg_stat_activity
+        WHERE backend_type = 'client backend';
+    """)
+    snapshot.update(dict(cur.fetchone()))
+
+    # Top query workload pressure from pg_stat_statements
+    cur.execute("""
+        SELECT 
+            SUM(calls)                           AS stmt_calls_cumulative,
+            SUM(total_exec_time)                 AS total_exec_ms_cumulative,
+            SUM(rows)                            AS rows_returned_cumulative,
+            SUM(shared_blks_hit + shared_blks_read) AS shared_blks_accessed
+        FROM pg_stat_statements
+        WHERE dbid = (SELECT oid FROM pg_database 
+                      WHERE datname = current_database());
+    """)
+    snapshot.update(dict(cur.fetchone()))
+
+    cur.close()
+    conn.close()
+    return snapshot</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The key insight in this collector is that cumulative counters from <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_statements</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_database</code> are only useful as *deltas between consecutive snapshots*. If you collect every 60 seconds, the delta of <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">total_exec_ms</code> divided by 60 gives you the average milliseconds of query CPU consumed per second — a far more useful feature than the raw cumulative number.</p>
+
+<p class="text-gray-300 leading-relaxed">Once you have a history of snapshots stored in TimescaleDB or Prometheus, the feature engineering step creates the lag features, rolling statistics, and calendar features that give ML models their predictive power:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import pandas as pd
+import numpy as np
+
+def engineer_features(df: pd.DataFrame) -&gt; pd.DataFrame:
+    """
+    Input: DataFrame with raw snapshot metrics, indexed by timestamp.
+    Output: Feature matrix ready for ML training or inference.
+    """
+    df = df.sort_index()
+
+    # Delta features — rate of change between consecutive snapshots
+    for col in ["blks_hit", "blks_read", "stmt_calls_cumulative",
+                "total_exec_ms_cumulative", "shared_blks_accessed"]:
+        df[f"{col}_delta"] = df[col].diff()
+
+    # Compute cache hit ratio from deltas (more accurate than ratio of cumulative)
+    hit_d  = df["blks_hit_delta"].clip(lower=0)
+    read_d = df["blks_read_delta"].clip(lower=0)
+    df["cache_hit_ratio_delta"] = hit_d / (hit_d + read_d).replace(0, np.nan)
+
+    # Rolling statistics — 5-min, 30-min, 2-hour windows (assuming 1-min snapshots)
+    for window, label in [(5, "5m"), (30, "30m"), (120, "2h")]:
+        df[f"exec_ms_mean_{label}"] = (
+            df["total_exec_ms_cumulative_delta"].rolling(window).mean()
+        )
+        df[f"exec_ms_std_{label}"]  = (
+            df["total_exec_ms_cumulative_delta"].rolling(window).std()
+        )
+        df[f"active_conns_max_{label}"] = (
+            df["active_conns"].rolling(window).max()
+        )
+
+    # Ratio features — connection saturation
+    df["conn_saturation"] = df["active_conns"] / (
+        df["active_conns"] + df["idle_conns"]
+    ).replace(0, np.nan)
+
+    # Calendar features — capture seasonality
+    df["hour_of_day"]     = df.index.hour
+    df["day_of_week"]     = df.index.dayofweek
+    df["is_business_hour"] = (
+        (df["hour_of_day"] &gt;= 8) & (df["hour_of_day"] &lt;= 18) &
+        (df["day_of_week"] &lt; 5)
+    ).astype(int)
+    df["week_of_year"]    = df.index.isocalendar().week.astype(int)
+
+    # Lag features — historical state at T-1h, T-4h, T-24h
+    for lag_minutes in [60, 240, 1440]:
+        lag = lag_minutes  # with 1-min snapshots, lag == periods
+        df[f"exec_ms_lag_{lag_minutes}m"] = (
+            df["total_exec_ms_cumulative_delta"].shift(lag)
+        )
+        df[f"active_conns_lag_{lag_minutes}m"] = (
+            df["active_conns"].shift(lag)
+        )
+
+    return df.dropna()</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The combination of delta features, rolling windows, ratio features, calendar flags, and lag features gives the model enough signal to understand both the immediate state of the system and its trajectory over the past 24 hours — which is what separates a useful forecast from statistical noise.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Choosing and Training the Right Forecasting Models</h3>
+
+<p class="text-gray-300 leading-relaxed">The forecasting problem in database operations splits into two distinct families: *univariate time-series forecasting* (predicting a single metric like CPU utilization forward 2 hours) and *multivariate regression forecasting* (predicting an outcome like query latency given current system state across many features). Each family has different model choices, training requirements, and failure modes.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Univariate Time-Series Forecasting</strong> is the right approach for infrastructure metrics with strong seasonality: CPU, memory consumption, disk I/O bytes, number of active connections. The most production-proven model for these is Facebook's Prophet, which explicitly models daily and weekly seasonality with Fourier series and handles the irregularities — holidays, data loading windows, end-of-month peaks — as regressors. For more irregular signals, LSTM (Long Short-Term Memory) networks can learn complex multi-period dependencies, but they require far more data and tuning to outperform Prophet on typical DBA workloads.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>from prophet import Prophet
+import pandas as pd
+import joblib
+import logging
+
+logging.getLogger("prophet").setLevel(logging.WARNING)
+
+def train_connection_forecast_model(history_df: pd.DataFrame,
+                                    model_path: str) -&gt; dict:
+    """
+    Train a Prophet model to forecast active_conns 4 hours ahead.
+    history_df must have: 'ds' (datetime) and 'y' (active_conns) columns.
+    Returns evaluation metrics on a held-out validation window.
+    """
+    # Prophet requires columns named 'ds' and 'y'
+    df = history_df[["ds", "y"]].copy()
+    df["ds"] = pd.to_datetime(df["ds"]).dt.tz_localize(None)
+
+    # 80/20 chronological split — never shuffle time-series data
+    cutoff = df["ds"].quantile(0.80)
+    train  = df[df["ds"] &lt;= cutoff]
+    valid  = df[df["ds"] &gt;  cutoff]
+
+    model = Prophet(
+        seasonality_mode="multiplicative",   # workload scales multiplicatively
+        daily_seasonality=True,
+        weekly_seasonality=True,
+        yearly_seasonality=False,            # need 1yr+ data for this
+        changepoint_prior_scale=0.05,        # conservative — avoids overfitting
+        interval_width=0.90                  # 90% confidence intervals
+    )
+
+    # Add a custom seasonality for business-quarter patterns if available
+    model.add_seasonality(name="monthly", period=30.5, fourier_order=5)
+    model.fit(train)
+
+    # Forecast over the validation window
+    future    = model.make_future_dataframe(periods=len(valid), freq="1min")
+    forecast  = model.predict(future)
+    valid_hat = forecast.set_index("ds")["yhat"].reindex(valid["ds"].values)
+
+    from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
+    mae  = mean_absolute_error(valid["y"].values, valid_hat.fillna(method="ffill"))
+    mape = mean_absolute_percentage_error(
+               valid["y"].values, valid_hat.fillna(method="ffill").clip(lower=1)
+           )
+
+    joblib.dump(model, model_path)
+    return {"mae": round(mae, 3), "mape": round(mape * 100, 2), 
+            "train_rows": len(train), "valid_rows": len(valid)}</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Multivariate Regression Forecasting</strong> is better suited for predicting query latency degradation, because latency is driven by a combination of system state signals that don't have clean seasonality on their own. The model needs to learn: *given this combination of cache hit ratio, lock waiter count, temp file growth rate, and connection saturation, what will P95 query latency look like in 30 minutes?*</p>
+
+<p class="text-gray-300 leading-relaxed">Gradient-boosted trees — specifically XGBoost or LightGBM — are the default choice here. They handle tabular data well, require less hyperparameter tuning than neural networks, produce feature importance scores you can explain to management, and train fast enough to retrain daily on a modest instance.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import xgboost as xgb
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.metrics import mean_absolute_error
+import numpy as np
+import pandas as pd
+
+FEATURE_COLS = [
+    "cache_hit_ratio_delta", "exec_ms_mean_5m", "exec_ms_std_30m",
+    "active_conns_max_2h",   "lock_waiters",     "conn_saturation",
+    "hour_of_day",            "day_of_week",       "is_business_hour",
+    "exec_ms_lag_60m",        "exec_ms_lag_240m",  "exec_ms_lag_1440m",
+    "active_conns_lag_60m",  "shared_blks_accessed_delta"
+]
+
+TARGET_COL   = "p95_latency_ms_t30"   # P95 latency 30 minutes ahead (pre-computed shift)
+
+def train_latency_forecast_model(feature_df: pd.DataFrame) -&gt; dict:
+    df = feature_df.dropna(subset=FEATURE_COLS + [TARGET_COL])
+    X  = df[FEATURE_COLS]
+    y  = df[TARGET_COL]
+
+    # TimeSeriesSplit respects temporal order — no data leakage
+    tscv    = TimeSeriesSplit(n_splits=5)
+    cv_maes = []
+
+    model = xgb.XGBRegressor(
+        n_estimators=400,
+        max_depth=6,
+        learning_rate=0.05,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        min_child_weight=10,     # prevents overfitting on short-lived spikes
+        objective="reg:squarederror",
+        tree_method="hist",
+        random_state=42
+    )
+
+    for fold, (train_idx, val_idx) in enumerate(tscv.split(X)):
+        X_tr, X_val = X.iloc[train_idx], X.iloc[val_idx]
+        y_tr, y_val = y.iloc[train_idx], y.iloc[val_idx]
+        model.fit(X_tr, y_tr,
+                  eval_set=[(X_val, y_val)],
+                  early_stopping_rounds=30,
+                  verbose=False)
+        preds   = model.predict(X_val)
+        fold_mae = mean_absolute_error(y_val, preds)
+        cv_maes.append(fold_mae)
+
+    # Final fit on all data
+    model.fit(X, y, verbose=False)
+
+    importance = pd.Series(
+        model.feature_importances_, index=FEATURE_COLS
+    ).sort_values(ascending=False)
+
+    return {
+        "model":      model,
+        "cv_mae_mean": round(np.mean(cv_maes), 2),
+        "cv_mae_std":  round(np.std(cv_maes), 2),
+        "top_features": importance.head(5).to_dict()
+    }</code></pre>
+
+<p class="text-gray-300 leading-relaxed">One area where many teams go wrong is validation. Because telemetry data has temporal dependencies, standard K-fold cross-validation is invalid — it leaks future data into training folds, producing optimistically biased metrics. Always use <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">TimeSeriesSplit</code> (sklearn) or a walk-forward validation scheme. Treat your holdout window as the *most recent* portion of history, not a random sample.</p>
+
+<p class="text-gray-300 leading-relaxed">For model evaluation, the metrics that matter in a DBA context are not purely statistical:</p>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Mean Absolute Percentage Error (MAPE)** on connection count forecasts — should stay below 15% for workloads with regular patterns</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Time-to-threshold precision** — how many minutes in advance does the model correctly signal a breach, and how often does it generate false positives?</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **P95 latency MAE** — in absolute milliseconds, not percent, because a 50% error on a 2ms query is irrelevant, but a 20% error on a 2,000ms query is operationally meaningful</li>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Anomaly Detection as a Forecasting Input</h3>
+
+<p class="text-gray-300 leading-relaxed">Pure forecasting tells you where a metric is heading based on historical patterns. Anomaly detection tells you when the current state has diverged from what the model expects — which is often the earliest detectable signal that something is going wrong. Used together, they create a layered predictive capability: the anomaly detector catches early deviations, the forecaster projects whether those deviations will cascade into a performance problem within the horizon that matters.</p>
+
+<p class="text-gray-300 leading-relaxed">For database environments, the most operationally useful anomaly detection algorithm is <strong class="text-white">Isolation Forest</strong>, because it handles multivariate input natively, doesn't require a labeled training set of "known bad" events (which are always sparse), and produces a continuous anomaly score rather than a binary flag. That score can be incorporated as a feature in your latency forecasting model — a rising anomaly score combined with increasing lock waiters is a far stronger predictor than either signal alone.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
+import numpy as np
+import joblib
+
+ANOMALY_FEATURES = [
+    "cache_hit_ratio_delta", "active_conns", "lock_waiters",
+    "exec_ms_mean_5m",        "exec_ms_std_30m",
+    "conn_saturation",        "shared_blks_accessed_delta"
+]
+
+def train_anomaly_detector(normal_df: pd.DataFrame,
+                            scaler_path: str,
+                            model_path: str) -&gt; float:
+    """
+    Train on data from a known-normal period (e.g., last 60 days excluding 
+    any confirmed incidents). Returns the contamination-adjusted threshold.
+    normal_df is expected to be the engineered feature DataFrame.
+    """
+    X = normal_df[ANOMALY_FEATURES].dropna()
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    iso = IsolationForest(
+        n_estimators=200,
+        max_samples=0.8,
+        contamination=0.02,  # assume 2% of even "normal" data has soft anomalies
+        random_state=42,
+        n_jobs=-1
+    )
+    iso.fit(X_scaled)
+
+    scores = iso.score_samples(X_scaled)   # lower = more anomalous
+    threshold = np.percentile(scores, 2)   # flag bottom 2% at inference time
+
+    joblib.dump(scaler, scaler_path)
+    joblib.dump(iso,    model_path)
+    return float(threshold)
+
+
+def score_current_snapshot(snapshot_features: dict,
+                            scaler_path: str,
+                            model_path: str,
+                            threshold: float) -&gt; dict:
+    scaler = joblib.load(scaler_path)
+    iso    = joblib.load(model_path)
+    X = np.array([[snapshot_features[f] for f in ANOMALY_FEATURES]])
+    X_scaled = scaler.transform(X)
+    score    = float(iso.score_samples(X_scaled)[0])
+    return {
+        "anomaly_score": round(score, 4),
+        "is_anomalous":  score &lt; threshold,
+        "severity":      "high" if score &lt; threshold * 1.5 else
+                         "medium" if score &lt; threshold else "normal"
+    }</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The anomaly score becomes a first-class feature in your production inference pipeline. When the Isolation Forest returns a score below threshold, that event</p>
+    </div>
+    <div class="mt-14 bg-violet-950/40 border border-violet-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The AI-Powered DBA</div>
+  </footer>
+</body>
+</html>
