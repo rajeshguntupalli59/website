@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 16: AI Features in AWS RDS and Aurora — The AI-Powered DBA</title>
+  <meta name="description" content="The AI-Powered DBA Chapter 16: AI Features in AWS RDS and Aurora. AI and AIOps for PostgreSQL and SQL Server, by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-violet-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html"   class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"       class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Books</a>
+        <a href="index.html"         class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Book 2 Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-violet-400 hover:text-violet-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-violet-900/40 border border-violet-800/40 text-violet-300 text-xs rounded-full font-medium">Chapter 16 of 20</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 16: AI Features in AWS RDS and Aurora</h2>
+
+<p class="text-gray-300 leading-relaxed">AWS has quietly assembled one of the most complete stacks for AI-augmented database operations available to any DBA today. Between Amazon RDS for PostgreSQL and SQL Server, Aurora PostgreSQL and MySQL, and the surrounding ecosystem of Bedrock, Performance Insights ML, DevOps Guru for RDS, and the pgvector extension, the platform gives you building blocks that were either unavailable or required significant custom engineering just three years ago. This chapter cuts through the marketing and focuses on what these services actually do, where they fall short, and how to wire them together into production-grade systems that reduce operational toil and surface intelligence you can act on.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">What AWS Actually Gives You: The AI/ML Layer Mapped to RDS and Aurora</h3>
+
+<p class="text-gray-300 leading-relaxed">Before writing a single line of code or enabling a single feature, it pays to understand exactly which services belong to which layer of the stack. AWS tends to announce AI features at re:Invent and then roll them out unevenly across engine versions, regions, and instance types. Knowing the landscape prevents you from designing an architecture that breaks because a feature you assumed was available on <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">db.t3.medium</code> is actually restricted to <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">db.r6g.large</code> and above.</p>
+
+<p class="text-gray-300 leading-relaxed">The AI/ML capabilities in the RDS and Aurora ecosystem fall into four broad layers:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Layer 1: Embedded ML inference inside the query engine.</strong> Aurora ML allows you to call Amazon SageMaker endpoints and Amazon Comprehend directly from SQL using a function call. The database engine handles the HTTP transport to the ML service, passes row data as features, and returns predictions inline. This is the closest AWS gets to what Oracle calls "in-database ML." The limitation is that you are calling external endpoints, not running models inside the storage engine itself.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Layer 2: Performance observability with ML-based anomaly detection.</strong> Performance Insights includes a Counter Metrics ML model that flags unusual deviations in wait events and DB load. DevOps Guru for RDS sits above this layer and correlates anomalies across metrics, logs, and events to surface what AWS calls "insights" — essentially root cause hypotheses generated by an ML model trained on AWS operational data.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Layer 3: Vector search via pgvector.</strong> Aurora PostgreSQL and RDS PostgreSQL both support the pgvector extension, which adds a native vector data type and approximate nearest neighbor (ANN) indexes. This is not an AI model in itself, but it is what allows you to build retrieval-augmented generation (RAG) pipelines that use your database as the semantic search backend.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Layer 4: External AI model integration via Bedrock.</strong> AWS Bedrock gives you managed access to foundation models — Anthropic Claude, Amazon Titan, Meta Llama, Cohere, and others — via a single API. When you need generative reasoning about your database (query rewriting, schema summarization, anomaly explanation), you call Bedrock. There is no native Bedrock-to-RDS integration today; you build that bridge yourself.</p>
+
+<p class="text-gray-300 leading-relaxed">Understanding these layers matters because a common mistake is treating DevOps Guru as a replacement for a proper observability pipeline, or treating Aurora ML as a replacement for an external feature store. They complement each other, and the production architectures that work are the ones that use each layer for what it does well.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Aurora ML: Calling SageMaker and Comprehend from SQL</h3>
+
+<p class="text-gray-300 leading-relaxed">Aurora ML is the feature with the highest potential for shock-and-awe demos and the most nuanced operational requirements for production. The premise is compelling: you have a SageMaker endpoint serving a churn prediction model, and instead of extracting rows, scoring them in Python, and writing predictions back, you call the model directly from a SQL SELECT statement. The database handles serialization, HTTP transport, and deserialization.</p>
+
+<p class="text-gray-300 leading-relaxed">To enable it, you need an Aurora cluster (PostgreSQL-compatible or MySQL-compatible), an IAM role attached to the cluster with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sagemaker:InvokeEndpoint</code> permissions, and an endpoint already deployed. The setup on the PostgreSQL side looks like this:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL (Aurora):</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Enable the aws_ml extension (available on Aurora PostgreSQL 13.1+)
+CREATE EXTENSION IF NOT EXISTS aws_ml CASCADE;
+
+-- Grant usage of the extension to your application role
+GRANT USAGE ON SCHEMA aws_ml TO app_role;
+
+-- Call a SageMaker endpoint inline in a query
+-- The endpoint must be deployed and accepting CSV or JSON input
+SELECT
+    customer_id,
+    lifetime_value_usd,
+    aws_sagemaker.invoke_endpoint(
+        'churn-prediction-endpoint-v2',   -- endpoint name
+        'application/json',               -- content type
+        json_build_object(
+            'tenure_months',    tenure_months,
+            'monthly_charges',  monthly_charges,
+            'total_charges',    total_charges,
+            'contract_type',    contract_type
+        )::text
+    )::json -&gt;&gt; 'churn_probability' AS churn_probability
+FROM
+    customer_features
+WHERE
+    segment = 'enterprise'
+    AND last_activity_date &gt; CURRENT_DATE - INTERVAL '90 days';</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Several things will immediately bite you if you skip the operational details. First, the SageMaker endpoint must be in the same AWS region as the Aurora cluster. Cross-region invocation is not supported. Second, Aurora ML uses a connection pool to the SageMaker endpoint, and by default it batches up to 100 rows per invocation to reduce round-trip overhead. You can tune <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">max_rows_per_batch</code> but cannot push below the minimum batch size. Third, because each invocation is a synchronous HTTP call, if your SageMaker endpoint has cold start latency or is under-provisioned, your query will block. Provision your endpoints with auto-scaling policies, and set <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">aws_sagemaker.max_timeout_ms</code> to a value that reflects your SLA tolerance rather than leaving it at the default.</p>
+
+<p class="text-gray-300 leading-relaxed">Amazon Comprehend integration works similarly but does not require you to manage a SageMaker endpoint. You call <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">aws_comprehend.detect_sentiment</code> or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">aws_comprehend.detect_dominant_language</code> as SQL functions, and Aurora handles the API calls:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL (Aurora):</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Classify support ticket sentiment inline during ingestion
+INSERT INTO support_tickets_enriched (
+    ticket_id,
+    body,
+    sentiment,
+    sentiment_score_positive,
+    sentiment_score_negative,
+    created_at
+)
+SELECT
+    ticket_id,
+    body,
+    (aws_comprehend.detect_sentiment(body, 'en')).sentiment,
+    (aws_comprehend.detect_sentiment(body, 'en')).positive,
+    (aws_comprehend.detect_sentiment(body, 'en')).negative,
+    created_at
+FROM
+    raw_support_tickets
+WHERE
+    processed = FALSE;
+
+-- Update processed flag
+UPDATE raw_support_tickets
+SET processed = TRUE
+WHERE processed = FALSE;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">One anti-pattern to avoid: calling <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">detect_sentiment</code> in a SELECT that also has an UPDATE or runs inside a high-frequency OLTP transaction. Comprehend API calls add 50–200ms of latency under normal conditions. That is acceptable for a batch enrichment job running against a read replica; it is not acceptable on a write path that needs sub-10ms response times. Route enrichment work to Aurora reader instances or run it as a background Lambda function triggered by SQS.</p>
+
+<p class="text-gray-300 leading-relaxed">SQL Server on RDS does not have an equivalent of Aurora ML. The SQL Server Machine Learning Services feature (in-database Python and R execution) is not available on RDS due to the extension mechanism it requires. If you are running SQL Server on RDS and need inline ML inference, the pattern is to use linked server connections to an external inference API or to pre-compute predictions in a Lambda function and store them in a dedicated predictions table that T-SQL queries can JOIN against. It is less elegant but operationally more predictable.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Performance Insights ML and DevOps Guru: Reading What the Model Tells You</h3>
+
+<p class="text-gray-300 leading-relaxed">Performance Insights is the most underused tool in the RDS toolkit. Most DBAs enable it, look at the DB Load chart when something is on fire, and ignore it the rest of the time. The ML layer on top of Performance Insights changes that calculus because it can surface anomalies you were not watching for.</p>
+
+<p class="text-gray-300 leading-relaxed">Performance Insights ML operates on the DB load time series per wait event. It builds a baseline model for each metric using approximately two weeks of historical data and then flags deviations using a threshold derived from that baseline — not a static threshold you configure, but a learned one. When <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">io/file/read</code> wait time spikes 8x its normal value at 3:47 AM on a Tuesday, the model flags it even if the absolute value is still within the range your static alarm would not trigger.</p>
+
+<p class="text-gray-300 leading-relaxed">You surface these programmatically using the Performance Insights API:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import boto3
+import json
+from datetime import datetime, timedelta, timezone
+
+pi_client = boto3.client('pi', region_name='us-east-1')
+
+resource_id = 'db-ABCDEFGHIJKLMNOPQRSTUVWXYZ'  # DbiResourceId from RDS describe-db-instances
+
+end_time = datetime.now(timezone.utc)
+start_time = end_time - timedelta(hours=6)
+
+response = pi_client.get_resource_metrics(
+    ServiceType='RDS',
+    Identifier=resource_id,
+    StartTime=start_time,
+    EndTime=end_time,
+    PeriodInSeconds=60,
+    MetricQueries=[
+        {
+            'Metric': 'db.load.avg',
+            'GroupBy': {
+                'Group': 'db.wait_event',
+                'Dimensions': ['db.wait_event.name'],
+                'Limit': 10
+            }
+        }
+    ]
+)
+
+# Extract anomalous periods — look for data points flagged by the ML layer
+# The API returns MeanSquaredError and other anomaly metadata in AlignedStartTime
+for metric_key in response.get('MetricList', []):
+    key_dimensions = metric_key['Key'].get('Dimensions', {})
+    wait_event = key_dimensions.get('db.wait_event.name', 'unknown')
+    
+    for point in metric_key.get('DataPoints', []):
+        if point.get('Value', 0) &gt; 5.0:  # DB load &gt; 5 vCPUs on this wait event
+            print(json.dumps({
+                'wait_event': wait_event,
+                'timestamp': point['Timestamp'].isoformat(),
+                'db_load': round(point['Value'], 2)
+            }))</code></pre>
+
+<p class="text-gray-300 leading-relaxed">DevOps Guru for RDS sits above this and uses a broader ML model trained on AWS operational data across a large fleet of RDS instances. It correlates Performance Insights anomalies with CloudWatch metrics, database logs, and RDS events to generate insights. An insight might look like: "High proportion of CPU time spent in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">lock:relation</code> wait events correlates with a recent increase in connection count and a schema change detected in the audit log. This pattern is consistent with a missing index on a table that is being scanned under lock contention."</p>
+
+<p class="text-gray-300 leading-relaxed">That is a real example of what DevOps Guru produces. It is not always right, and it sometimes surfaces insights that are obvious to any experienced DBA. But the value is not in replacing your judgment — it is in reducing the time from anomaly to hypothesis. When you are on call at 2 AM and your pager fires, getting a formatted hypothesis in your DevOps Guru console is faster than starting from scratch with pg_stat_activity and wait event histograms.</p>
+
+<p class="text-gray-300 leading-relaxed">To pull DevOps Guru insights programmatically and route them into your incident management workflow:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import boto3
+
+dg_client = boto3.client('devops-guru', region_name='us-east-1')
+sns_client = boto3.client('sns', region_name='us-east-1')
+
+INSIGHT_TOPIC_ARN = 'arn:aws:sns:us-east-1:123456789012:rds-critical-insights'
+
+paginator = dg_client.get_paginator('list_insights')
+pages = paginator.paginate(
+    StatusFilter={
+        'Any': {
+            'StartTimeRange': {
+                'FromTime': __import__('datetime').datetime.utcnow() - __import__('datetime').timedelta(hours=1),
+                'ToTime': __import__('datetime').datetime.utcnow()
+            },
+            'Type': 'REACTIVE'
+        }
+    }
+)
+
+for page in pages:
+    for insight in page.get('ReactiveInsights', []):
+        severity = insight.get('Severity', 'LOW')
+        if severity in ('HIGH', 'MEDIUM'):
+            description = insight.get('Name', 'No description')
+            insight_id = insight['Id']
+            
+            # Fetch the full insight for recommendations
+            detail = dg_client.describe_insight(Id=insight_id)
+            recommendations = detail.get('Insight', {}).get('Description', '')
+            
+            sns_client.publish(
+                TopicArn=INSIGHT_TOPIC_ARN,
+                Subject=f'[DevOpsGuru][{severity}] RDS Insight Detected',
+                Message=f"Insight: {description}\n\nRecommendations:\n{recommendations}\n\nInsight ID: {insight_id}"
+            )</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The gap between Performance Insights ML and DevOps Guru is worth understanding. Performance Insights ML tells you *what* metric is anomalous. DevOps Guru attempts to tell you *why* and *what to do*. Neither replaces the need for a human-readable diagnostic workflow, but together they shorten the diagnostic cycle for the most common RDS failure patterns.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Building RAG Pipelines with pgvector on Aurora and RDS</h3>
+
+<p class="text-gray-300 leading-relaxed">The pgvector extension transforms your PostgreSQL instance — whether Aurora or RDS — into a vector store capable of supporting production retrieval-augmented generation (RAG) pipelines. This is where the most active engineering work is happening in the database AI space today, and for good reason: the ability to store embeddings close to the structured data they describe eliminates an entire category of consistency and synchronization problems that arise when you use a standalone vector database like Pinecone or Weaviate.</p>
+
+<p class="text-gray-300 leading-relaxed">The extension is available on RDS PostgreSQL 15.2+ and Aurora PostgreSQL 15.2+. Install it once per database:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Install pgvector
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Create a table that stores document chunks alongside their embeddings
+-- This example manages internal runbook content for a DBA assistant
+CREATE TABLE runbook_chunks (
+    chunk_id        UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    runbook_name    TEXT NOT NULL,
+    section_title   TEXT,
+    chunk_text      TEXT NOT NULL,
+    embedding       VECTOR(1536),           -- OpenAI text-embedding-3-small dimension
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- IVFFlat index for approximate nearest neighbor search
+-- lists = sqrt(number_of_rows) is a reasonable starting point
+CREATE INDEX idx_runbook_embedding_ivfflat
+    ON runbook_chunks
+    USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = 100);
+
+-- For production at larger scale, HNSW provides better recall
+CREATE INDEX idx_runbook_embedding_hnsw
+    ON runbook_chunks
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">With the table and index in place, the ingestion pipeline embeds your text and writes to PostgreSQL:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import openai
+import psycopg2
+import uuid
+from typing import List
+
+openai_client = openai.OpenAI(api_key="YOUR_OPENAI_KEY")
+
+def embed_text(text: str) -&gt; List[float]:
+    response = openai_client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text
+    )
+    return response.data[0].embedding
+
+def ingest_runbook_chunk(
+    conn,
+    runbook_name: str,
+    section_title: str,
+    chunk_text: str
+) -&gt; None:
+    embedding = embed_text(chunk_text)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO runbook_chunks (chunk_id, runbook_name, section_title, chunk_text, embedding)
+            VALUES (%s, %s, %s, %s, %s::vector)
+            """,
+            (
+                str(uuid.uuid4()),
+                runbook_name,
+                section_title,
+                chunk_text,
+                str(embedding)
+            )
+        )
+    conn.commit()
+
+# Usage
+conn = psycopg2.connect(
+    host="your-aurora-cluster.cluster-xyz.us-east-1.rds.amazonaws.com",
+    database="ops_knowledge",
+    user="dba_user",
+    password="...",
+    sslmode="require"
+)
+
+ingest_runbook_chunk(
+    conn,
+    runbook_name="rds_failover_procedures",
+    section_title="Aurora Multi-AZ Failover Steps",
+    chunk_text="When promoting a reader to writer in Aurora, the cluster endpoint DNS propagation..."
+)</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The retrieval side of the RAG pipeline queries pgvector for the top-k most semantically similar chunks and passes them as context to the language model:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import boto3
+import json
+
+bedrock_client = boto3.client('bedrock-runtime', region_name='us-east-1')
+
+def retrieve_and_generate(conn, user_question: str, top_k: int = 5) -&gt; str:
+    # Step 1: Embed the user's question
+    question_embedding = embed_text(user_question)
+    
+    # Step 2: Retrieve semantically similar chunks from Aurora
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                runbook_name,
+                section_title,
+                chunk_text,
+                1 - (embedding &lt;=&gt; %s::vector) AS cosine_similarity
+            FROM runbook_chunks
+            ORDER BY embedding &lt;=&gt; %s::vector
+            LIMIT %s
+            """,
+            (str(question_embedding), str(question_embedding), top_k)
+        )
+        rows = cur.fetchall()
+    
+    # Step 3: Build context from retrieved chunks
+    context_blocks = []
+    for runbook_name, section_title, chunk_text, score in rows:
+        context_blocks.append(
+            f"[Source: {runbook_name} / {section_title} (similarity: {score:.3f})]\n{chunk_text}"
+        )
+    context = "\n\n---\n\n".join(context_blocks)
+    
+    # Step 4: Call Claude via Bedrock with retrieved context
+    prompt = f"""You are a senior DBA assistant. Answer the following question using ONLY the provided runbook context.
+If the context does not contain enough information, say so explicitly.
+
+CONTEXT:
+{context}
+
+QUESTION:
+{user_question}
+
+ANSWER:"""
+
+    response = bedrock_client.invoke_model(
+        modelId="anthropic.claude-3-5-sonnet-20241022-v2:0",
+        body=json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": prompt}]
+        }),
+        contentType="application/json",
+        accept="application/json"
+    )
+    
+    result = json.loads(response['body'].read())
+    return result['content'][0]['text']
+
+# Usage
+answer = retrieve_and_generate(
+    conn,
+    "What are the steps to safely promote a reader instance to writer in Aurora without data loss?"
+)
+print(answer)</code></pre>
+
+<p class="text-gray-300 leading-relaxed">SQL Server on RDS does not have a native vector data type or ANN index. If you are running a hybrid environment where SQL Server is your OLTP engine, the practical approach is to maintain your vector store in a separate Aurora PostgreSQL or RDS PostgreSQL instance and route semantic search queries there. Your SQL Server instance handles structured queries; your PostgreSQL instance handles vector search; a Python application tier joins the results. It is not ideal from a consistency standpoint, but it reflects the current reality of what each engine supports.</p>
+
+<p class="text-gray-300 leading-relaxed">The most important operational consideration for pgvector at production scale is index maintenance. HNSW indexes on Aurora PostgreSQL do not require periodic rebuild — the index structure handles updates in-place. IVFFlat indexes, however, need to be rebuilt periodically as your data grows because the cluster centroids become stale. A reasonable practice is to rebuild IVFFlat indexes after a 20–25% growth in row count, using <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">REINDEX INDEX CONCURRENTLY</code> to avoid locking:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Rebuild IVFFlat index without blocking reads
+REINDEX INDEX CONCURRENTLY idx_runbook_embedding_ivfflat;
+
+-- After rebuilding, check index size and bloat
+SELECT
+    pg_size_pretty(pg_relation_size('idx_runbook_embedding_ivfflat')) AS index_size,
+    pg_size_pretty(pg_total_relation_size('runbook_chunks'))           AS table_total_size;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Wiring Bedrock into Your RDS Operations Workflow</h3>
+
+<p class="text-gray-300 leading-relaxed">Performance Insights and DevOps Guru tell you what is wrong with your database. Bedrock is where you build the generative layer that translates raw diagnostic signals into actionable operational intelligence. The architecture pattern that works in production is: collect structured signals from AWS APIs, pass them as structured context to a Bedrock-hosted Claude or Titan model, and get back a reasoning chain that your on-call team can act on.</p>
+
+<p class="text-gray-300 leading-relaxed">The most immediate use case is autonomous wait event diagnosis. Your monitoring pipeline collects the top-10 wait events from Performance Insights, the top-5 queries by mean execution time from RDS Query Insights, and the current connection distribution from pg_stat_activity or sys.dm_exec_sessions. You pass this as a structured prompt to Bedrock and get back a hypothesis with recommended actions.</p>
+
+    </div>
+    <div class="mt-14 bg-violet-950/40 border border-violet-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The AI-Powered DBA</div>
+  </footer>
+</body>
+</html>
