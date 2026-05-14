@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 8: AI-Driven Root Cause Analysis — The AI-Powered DBA</title>
+  <meta name="description" content="The AI-Powered DBA Chapter 8: AI-Driven Root Cause Analysis. AI and AIOps for PostgreSQL and SQL Server, by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-violet-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html"   class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"       class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Books</a>
+        <a href="index.html"         class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Book 2 Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-violet-400 hover:text-violet-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-violet-900/40 border border-violet-800/40 text-violet-300 text-xs rounded-full font-medium">Chapter 8 of 20</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 8: AI-Driven Root Cause Analysis</h2>
+
+<p class="text-gray-300 leading-relaxed">When a production database goes down at 2 AM, the first question isn't "how do we fix it?" — it's "what caused this?" Root cause analysis has always been the hardest part of incident response. It requires correlating dozens of signals simultaneously: wait events, lock chains, query plans, system metrics, recent schema changes, application deployment history, and more. A skilled DBA can do this well, but it takes time — time that production systems often can't afford. AI changes this equation. By treating RCA as a signal correlation and reasoning problem, modern language models and anomaly detection pipelines can compress hours of investigation into minutes, surfacing the most probable causes with supporting evidence rather than leaving your team to manually triangulate across dashboards. This chapter covers how to build AI-driven RCA systems that work in real production PostgreSQL and SQL Server environments — not as a replacement for DBA judgment, but as a force multiplier that gets you to the right answer faster.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">The Anatomy of a Database Incident</h3>
+
+<p class="text-gray-300 leading-relaxed">Before you can automate root cause analysis, you need to be precise about what "root cause" means in a database context. Experienced DBAs know that database incidents are almost never single-threaded. A slow query isn't a root cause — it's a symptom. The root cause might be a missing index introduced by a schema migration three hours ago, a statistics staleness problem triggered by a bulk load, or a blocking chain originating from a long-running transaction in an unrelated service.</p>
+
+<p class="text-gray-300 leading-relaxed">Effective RCA means tracing backward through a causal chain: observable symptom → proximate cause → contributing factors → root cause. AI systems are particularly well-suited for this because they can hold multiple hypotheses simultaneously and weigh evidence across diverse data sources.</p>
+
+<p class="text-gray-300 leading-relaxed">In practice, database incidents tend to cluster around a handful of cause categories:</p>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Resource exhaustion**: CPU saturation, memory pressure, I/O bottlenecks, connection pool depletion</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Lock contention**: blocking chains, deadlocks, escalation events</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Query plan regression**: plan changes due to statistics drift, parameter sniffing, schema changes</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Configuration drift**: autovacuum tuning, memory settings, max_connections changes</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **External pressure**: replication lag causing read replicas to fall behind, downstream systems hammering connection pools</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Application behavior changes**: new deployment patterns, ORM-generated query changes, batch job overlap</li>
+
+<p class="text-gray-300 leading-relaxed">A well-designed AI RCA system needs to collect evidence across all these categories and reason about them together. The data collection problem is as important as the inference problem.</p>
+
+<p class="text-gray-300 leading-relaxed">The first step is understanding what raw signals your databases emit and how to capture them in a form an AI model can reason about. For PostgreSQL, the primary observability sources are <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_activity</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_statements</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_locks</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_wait_sampling</code> (or the built-in wait event columns), and system-level metrics surfaced through tools like <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">node_exporter</code> or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pgBouncer</code> stats. For SQL Server, the equivalents are <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_requests</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_query_stats</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_os_wait_stats</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_sessions</code>, and the Query Store.</p>
+
+<p class="text-gray-300 leading-relaxed">Critically, none of these sources alone tells the complete story. The AI system's value is in the synthesis.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Collecting the Right Signals for AI Analysis</h3>
+
+<p class="text-gray-300 leading-relaxed">An AI model can only reason about what you feed it. The quality of your RCA output is directly proportional to the richness and temporal precision of your collected signals. This section covers what to collect, at what granularity, and how to structure it for downstream AI reasoning.</p>
+
+<p class="text-gray-300 leading-relaxed">The goal is a <strong class="text-white">diagnostic snapshot</strong> — a structured bundle of signals captured around the time of an incident that gives the AI model the context it needs to reason about causality. Think of it as a flight data recorder for your database.</p>
+
+<p class="text-gray-300 leading-relaxed">#### Wait Event Profiling</p>
+
+<p class="text-gray-300 leading-relaxed">Wait events are the single most informative signal for database RCA. They tell you what the database engine was waiting for at a point in time, which directly maps to cause categories.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Capture a wait event profile over 10 seconds using pg_wait_sampling
+-- Requires pg_wait_sampling extension
+SELECT
+    event_type,
+    event,
+    count(*) AS sample_count,
+    round(100.0 * count(*) / sum(count(*)) OVER (), 2) AS pct_of_total
+FROM pg_wait_sampling_history
+WHERE sample_time &gt;= now() - interval '10 minutes'
+GROUP BY event_type, event
+ORDER BY sample_count DESC
+LIMIT 30;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Capture wait stats delta over an incident window
+-- First snapshot at incident start, second at resolution
+-- This query shows top waits from sys.dm_os_wait_stats
+SELECT TOP 20
+    wait_type,
+    waiting_tasks_count,
+    wait_time_ms,
+    max_wait_time_ms,
+    signal_wait_time_ms,
+    wait_time_ms - signal_wait_time_ms AS resource_wait_time_ms,
+    ROUND(100.0 * wait_time_ms / SUM(wait_time_ms) OVER (), 2) AS pct_total
+FROM sys.dm_os_wait_stats
+WHERE wait_type NOT IN (
+    -- Filter benign waits
+    'SLEEP_TASK','BROKER_TO_FLUSH','BROKER_EVENTHANDLER',
+    'CHECKPOINT_QUEUE','DBMIRROR_EVENTS_QUEUE','SQLTRACE_BUFFER_FLUSH',
+    'CLR_AUTO_EVENT','DISPATCHER_QUEUE_SEMAPHORE','FT_IFTS_SCHEDULER_IDLE_WAIT',
+    'HADR_WORK_QUEUE','LAZYWRITER_SLEEP','LOGMGR_QUEUE','ONDEMAND_TASK_QUEUE',
+    'REQUEST_FOR_DEADLOCK_SEARCH','RESOURCE_QUEUE','SERVER_IDLE_CHECK',
+    'SLEEP_DBSTARTUP','SLEEP_DCOMSTARTUP','SLEEP_MASTERDBREADY',
+    'SLEEP_MASTERMDREADY','SLEEP_MASTERUPGRADED','SLEEP_MSDBSTARTUP',
+    'SLEEP_TEMPDBSTARTUP','SNI_HTTP_ACCEPT','SP_SERVER_DIAGNOSTICS_SLEEP',
+    'SQLTRACE_INCREMENTAL_FLUSH_SLEEP','WAIT_XTP_OFFLINE_CKPT_NEW_LOG',
+    'XE_DISPATCHER_WAIT','XE_TIMER_EVENT','BROKER_TRANSMITTER',
+    'WAITFOR','SLEEP_TASK'
+)
+ORDER BY wait_time_ms DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">#### Active Session and Blocking Snapshots</p>
+
+<p class="text-gray-300 leading-relaxed">Beyond wait events, you need to understand what queries were actually running and who was blocking whom.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Blocking tree with full query text and duration
+WITH RECURSIVE blocking_tree AS (
+    SELECT
+        pid,
+        usename,
+        application_name,
+        state,
+        wait_event_type,
+        wait_event,
+        query_start,
+        now() - query_start AS duration,
+        left(query, 200) AS query_snippet,
+        pg_blocking_pids(pid) AS blocked_by,
+        ARRAY[pid] AS path
+    FROM pg_stat_activity
+    WHERE state != 'idle'
+    AND pid != pg_backend_pid()
+)
+SELECT
+    array_to_string(path, ' -&gt; ') AS block_chain,
+    pid,
+    usename,
+    state,
+    wait_event_type || ': ' || COALESCE(wait_event, 'none') AS wait,
+    round(extract(epoch from duration)::numeric, 1) AS duration_seconds,
+    query_snippet
+FROM blocking_tree
+ORDER BY array_length(blocked_by, 1) DESC NULLS LAST, duration DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Blocking chain with head blocker identification
+SELECT
+    r.session_id,
+    r.blocking_session_id,
+    r.wait_type,
+    r.wait_time / 1000.0 AS wait_seconds,
+    r.status,
+    s.login_name,
+    s.program_name,
+    s.host_name,
+    DB_NAME(r.database_id) AS database_name,
+    SUBSTRING(qt.text, (r.statement_start_offset/2)+1,
+        ((CASE r.statement_end_offset
+            WHEN -1 THEN DATALENGTH(qt.text)
+            ELSE r.statement_end_offset END
+        - r.statement_start_offset)/2)+1) AS current_statement,
+    qp.query_plan
+FROM sys.dm_exec_requests r
+JOIN sys.dm_exec_sessions s ON r.session_id = s.session_id
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) qt
+OUTER APPLY sys.dm_exec_query_plan(r.plan_handle) qp
+WHERE r.blocking_session_id &gt; 0
+   OR EXISTS (
+       SELECT 1 FROM sys.dm_exec_requests r2
+       WHERE r2.blocking_session_id = r.session_id
+   )
+ORDER BY r.wait_time DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">#### Building the Diagnostic Snapshot</p>
+
+<p class="text-gray-300 leading-relaxed">With these queries as building blocks, the next step is automating collection into a structured diagnostic bundle. The following Python script collects a snapshot from PostgreSQL and assembles it into a JSON document ready for AI analysis:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import psycopg2
+import json
+import datetime
+from dataclasses import dataclass, asdict
+from typing import Optional
+
+@dataclass
+class DiagnosticSnapshot:
+    timestamp: str
+    database_host: str
+    incident_window_minutes: int
+    wait_events: list
+    active_sessions: list
+    blocking_chains: list
+    top_queries_by_time: list
+    table_bloat_alerts: list
+    recent_autovacuum_activity: list
+    connection_counts: dict
+    system_metrics: Optional[dict] = None
+
+def collect_pg_snapshot(conn_string: str, incident_window_minutes: int = 30) -&gt; DiagnosticSnapshot:
+    conn = psycopg2.connect(conn_string)
+    cur = conn.cursor()
+    
+    def fetchall_as_dicts(query, params=None):
+        cur.execute(query, params)
+        cols = [desc[0] for desc in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+    
+    # Wait events (requires pg_wait_sampling or pg_stat_activity aggregation)
+    wait_events = fetchall_as_dicts("""
+        SELECT wait_event_type, wait_event, count(*) as count
+        FROM pg_stat_activity
+        WHERE state != 'idle' AND wait_event IS NOT NULL
+        GROUP BY wait_event_type, wait_event
+        ORDER BY count DESC LIMIT 20
+    """)
+    
+    # Active sessions
+    active_sessions = fetchall_as_dicts("""
+        SELECT pid, usename, application_name, state, 
+               wait_event_type, wait_event,
+               round(extract(epoch from (now() - query_start))::numeric, 1) as duration_seconds,
+               left(query, 300) as query_snippet
+        FROM pg_stat_activity
+        WHERE state != 'idle' AND pid != pg_backend_pid()
+        ORDER BY duration_seconds DESC NULLS LAST
+        LIMIT 25
+    """)
+    
+    # Connection counts by state
+    conn_counts = fetchall_as_dicts("""
+        SELECT state, count(*) as count
+        FROM pg_stat_activity
+        GROUP BY state
+    """)
+    
+    # Top queries by total time from pg_stat_statements
+    top_queries = fetchall_as_dicts("""
+        SELECT 
+            left(query, 200) as query_snippet,
+            calls,
+            round((total_exec_time / calls)::numeric, 2) as avg_ms,
+            round(total_exec_time::numeric, 0) as total_ms,
+            rows,
+            round(100.0 * total_exec_time / 
+                  nullif(sum(total_exec_time) OVER (), 0), 2) as pct_total_time
+        FROM pg_stat_statements
+        ORDER BY total_exec_time DESC
+        LIMIT 15
+    """)
+    
+    # Recent autovacuum activity
+    autovacuum = fetchall_as_dicts("""
+        SELECT schemaname, relname, 
+               last_autovacuum, last_autoanalyze,
+               n_dead_tup, n_live_tup,
+               round(100.0 * n_dead_tup / NULLIF(n_live_tup + n_dead_tup, 0), 2) as dead_pct
+        FROM pg_stat_user_tables
+        WHERE n_dead_tup &gt; 1000 OR last_autovacuum &gt; now() - interval '1 hour'
+        ORDER BY n_dead_tup DESC
+        LIMIT 20
+    """)
+    
+    conn.close()
+    
+    return DiagnosticSnapshot(
+        timestamp=datetime.datetime.utcnow().isoformat(),
+        database_host=conn_string.split('@')[-1].split('/')[0] if '@' in conn_string else 'unknown',
+        incident_window_minutes=incident_window_minutes,
+        wait_events=wait_events,
+        active_sessions=active_sessions,
+        blocking_chains=[],  # Populate from blocking tree query
+        top_queries_by_time=top_queries,
+        table_bloat_alerts=[],  # Populate from bloat query
+        recent_autovacuum_activity=autovacuum,
+        connection_counts={row['state']: row['count'] for row in conn_counts}
+    )
+
+# Serialize for AI consumption
+snapshot = collect_pg_snapshot("postgresql://user:pass@host/dbname")
+snapshot_json = json.dumps(asdict(snapshot), indent=2, default=str)</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The JSON document this produces becomes the primary input to your AI reasoning layer. Structuring it as a consistent schema — rather than raw query dumps — gives the model predictable context windows and makes it much easier to iterate on your prompts.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Structuring the AI Reasoning Layer</h3>
+
+<p class="text-gray-300 leading-relaxed">Once you have a diagnostic snapshot, the next challenge is prompting a language model to reason about it correctly. This is where most naive implementations fail: they dump raw data at a model and ask "what's wrong?" without providing the reasoning framework that separates a useful analysis from a generic response.</p>
+
+<p class="text-gray-300 leading-relaxed">Effective AI RCA prompting has three components: <strong class="text-white">context framing</strong>, <strong class="text-white">structured hypothesis generation</strong>, and <strong class="text-white">evidence-linked conclusions</strong>. The model needs to know what kind of system it's analyzing, what symptoms triggered the investigation, and what format you want the analysis in so it integrates cleanly with your incident response workflow.</p>
+
+<p class="text-gray-300 leading-relaxed">#### The RCA Prompt Architecture</p>
+
+<p class="text-gray-300 leading-relaxed">The following Python function demonstrates a production-grade RCA prompt construction and Claude API invocation:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import anthropic
+import json
+from typing import Optional
+
+def analyze_incident_with_claude(
+    snapshot: dict,
+    incident_description: str,
+    alert_context: Optional[dict] = None,
+    model: str = "claude-opus-4-5"
+) -&gt; dict:
+    """
+    Submit a diagnostic snapshot to Claude for root cause analysis.
+    Returns structured RCA with confidence scores and recommended actions.
+    """
+    client = anthropic.Anthropic()
+    
+    system_prompt = """You are an expert database reliability engineer specializing in 
+PostgreSQL and SQL Server incident analysis. You have deep knowledge of:
+- Query execution plans and optimizer behavior
+- Lock management, blocking chains, and deadlock resolution
+- Memory management (shared_buffers, work_mem, buffer pool)
+- Autovacuum behavior and table bloat
+- Replication lag causes and effects
+- Connection pooling architecture (pgBouncer, HikariCP)
+- Index design and statistics maintenance
+
+When analyzing a diagnostic snapshot, you:
+1. Identify the most likely root causes ranked by probability
+2. Distinguish root causes from symptoms
+3. Cite specific evidence from the snapshot data
+4. Identify what additional data would confirm or rule out each hypothesis
+5. Provide concrete remediation steps ordered by urgency
+
+Your output must be valid JSON following the schema provided."""
+
+    user_prompt = f"""Analyze this database incident and provide root cause analysis.
+
+INCIDENT DESCRIPTION:
+{incident_description}
+
+ALERT CONTEXT:
+{json.dumps(alert_context or {}, indent=2)}
+
+DIAGNOSTIC SNAPSHOT:
+{json.dumps(snapshot, indent=2, default=str)}
+
+Respond with a JSON object matching this exact schema:
+{{
+  "incident_summary": "2-3 sentence summary of what happened",
+  "root_causes": [
+    {{
+      "rank": 1,
+      "category": "lock_contention|query_regression|resource_exhaustion|configuration|application|replication",
+      "description": "Specific description of this root cause",
+      "confidence": 0.0-1.0,
+      "supporting_evidence": ["list of specific data points from snapshot that support this"],
+      "ruling_out_evidence": ["data points that would argue against this cause"],
+      "additional_data_needed": ["what to collect to confirm this hypothesis"]
+    }}
+  ],
+  "immediate_actions": [
+    {{
+      "priority": "critical|high|medium",
+      "action": "Specific action to take",
+      "rationale": "Why this action addresses the root cause",
+      "sql_or_command": "Optional: exact SQL or command to run"
+    }}
+  ],
+  "contributing_factors": ["list of conditions that made this incident worse or more likely"],
+  "prevention_recommendations": ["longer-term changes to prevent recurrence"],
+  "confidence_in_analysis": 0.0-1.0,
+  "data_quality_notes": "Assessment of diagnostic snapshot completeness"
+}}"""
+
+    response = client.messages.create(
+        model=model,
+        max_tokens=4096,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_prompt}]
+    )
+    
+    # Extract and parse JSON from response
+    response_text = response.content[0].text
+    
+    # Handle cases where model wraps JSON in markdown code blocks
+    if "```json" in response_text:
+        start = response_text.find("```json") + 7
+        end = response_text.rfind("```")
+        response_text = response_text[start:end].strip()
+    elif "```" in response_text:
+        start = response_text.find("```") + 3
+        end = response_text.rfind("```")
+        response_text = response_text[start:end].strip()
+    
+    analysis = json.loads(response_text)
+    analysis["model_used"] = model
+    analysis["snapshot_timestamp"] = snapshot.get("timestamp")
+    
+    return analysis
+
+
+# Example usage during an active incident
+snapshot_data = json.loads(snapshot_json)  # From previous collection step
+analysis = analyze_incident_with_claude(
+    snapshot=snapshot_data,
+    incident_description="P1 alert: average query latency increased 8x in last 15 minutes. "
+                          "Application error rate spiking. No recent application deployments.",
+    alert_context={
+        "alert_name": "QueryLatencyHigh",
+        "fired_at": "2024-01-15T02:14:33Z",
+        "affected_service": "orders-api",
+        "p99_latency_ms": 4200,
+        "baseline_p99_ms": 520,
+        "error_rate_pct": 12.4
+    }
+)
+
+# Print ranked root causes
+for cause in analysis["root_causes"]:
+    print(f"\nRank {cause['rank']} ({cause['confidence']*100:.0f}% confidence): {cause['category']}")
+    print(f"  {cause['description']}")
+    print(f"  Evidence: {cause['supporting_evidence'][0] if cause['supporting_evidence'] else 'N/A'}")</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The structured JSON output from this analysis integrates directly into incident management tools. Each root cause comes with a confidence score and the specific evidence that informed it, which means your on-call DBA can immediately validate the AI's reasoning rather than accepting it as a black box.</p>
+
+<p class="text-gray-300 leading-relaxed">#### Reasoning About Causal Chains</p>
+
+<p class="text-gray-300 leading-relaxed">One of the more sophisticated capabilities of modern LLMs is following multi-hop causal chains — exactly the kind of reasoning that makes RCA hard. When the snapshot shows high <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">Lock:relation</code> waits alongside a recent <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_activity</code> entry showing a long-running <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ALTER TABLE</code>, the model can connect these: the DDL operation is holding an <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">AccessExclusiveLock</code>, downstream DML is queuing behind it, the connection pool is filling with waiting sessions, and the application is timing out. This chain isn't obvious from any single metric.</p>
+
+<p class="text-gray-300 leading-relaxed">To improve causal chain reasoning, include temporal context in your snapshots wherever possible. The AI performs significantly better when it knows which conditions preceded others. Include change event logs — recent deployments, schema migrations, cron job executions, replication topology changes — alongside the real-time metrics.</p>
+
+<p class="text-gray-300 leading-relaxed">You can also improve reasoning quality by using a two-pass approach: a first pass that generates hypotheses, followed by a second pass that critiques them. This adversarial self-review pattern catches cases where the model latches onto the most prominent signal and ignores subtler but more important causes.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>def two_pass_rca(snapshot: dict, incident_description: str) -&gt; dict:
+    """
+    Two-pass RCA: generate hypotheses, then critique and refine.
+    Reduces false-high-confidence conclusions.
+    """
+    client = anthropic.Anthropic()
+    
+    # Pass 1: Generate initial hypotheses
+    initial_analysis = analyze_incident_with_claude(snapshot, incident_description)
+    
+    # Pass 2: Critique and refine
+    critique_prompt = f"""You previously generated this root cause analysis for a database incident:
+
+ORIGINAL ANALYSIS:
+{json.dumps(initial_analysis, indent=2)}
+
+ORIGINAL INCIDENT DESCRIPTION:
+{incident_description}
+
+Now act as a skeptical senior DBA reviewing this analysis. For each root cause:
+1. Challenge the confidence scores — are they too high given the available evidence?
+2. Identify any alternative explanations the analysis missed
+3. Flag any cases where correlation is being mistaken for causation
+4. Note if the recommended actions could make things worse
+
+Return the same JSON schema but with revised confidence scores and any additional 
+root causes or caveats added. Add a "critique_notes" field explaining major revisions."""
+
+    critique_response = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=4096,
+        messages=[
+            {"role": "user", "content": critique_prompt}
+        ]
+    )
+    
+    response_text = critique_response.content[0].text
+    if "```json" in response_text:
+        start = response_text.find("```json") + 7
+        end = response_text.rfind("```")
+        response_text = response_text[start:end].strip()
+    
+    refined_analysis = json.loads(response_text)
+    refined_analysis["analysis_passes"] = 2
+    
+    return refined_analysis</code></pre>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Integrating Change Context and Event Correlation</h3>
+
+<p class="text-gray-300 leading-relaxed">The most common failure mode in database RCA is tunnel vision on database-internal signals while ignoring the external events that triggered them. A query that ran fine yesterday isn't slow because of database drift — it's slow because a developer deployed a new feature that changed the query pattern, or because a nightly batch job started competing with OLTP traffic, or because a new microservice is hammering the same tables without appropriate indexing.</p>
+
+<p class="text-gray-300 leading-relaxed">AI models are particularly good at correlating database signals with external events when you give them the full picture. This requires building an event ingestion pipeline that pulls from multiple sources into your diagnostic snapshot.</p>
+
+<p class="text-gray-300 leading-relaxed">#### Event Sources to Capture</p>
+
+<p class="text-gray-300 leading-relaxed">The following event categories are most diagnostically valuable and should be captured in a time-windowed log alongside your database metrics:</p>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Deployment events**: Application deployments, container image pushes, configuration changes (pull from CI/CD tools like Jenkins, GitHub Actions, ArgoCD)</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Schema changes**: DDL history from `pg_ddl_command` audit logs, SQL Server DDL trigger logs, or your migration framework's change history</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Infrastructure changes**: Auto-scaling events, instance type changes, storage throughput changes (pull from CloudWatch, Azure Monitor, or GCP Operations)</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Workload changes**: Cron job schedules, batch processing windows, ETL pipeline executions</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Replication topology changes**: Failovers, replica additions, streaming replication lag events</li>
+
+<p class="text-gray-300 leading-relaxed">For PostgreSQL environments, the DDL audit trail is particularly important because missing index conditions frequently follow</p>
+    </div>
+    <div class="mt-14 bg-violet-950/40 border border-violet-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The AI-Powered DBA</div>
+  </footer>
+</body>
+</html>
