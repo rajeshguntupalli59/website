@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 9: Predictive Incident Prevention — The AI-Powered DBA</title>
+  <meta name="description" content="The AI-Powered DBA Chapter 9: Predictive Incident Prevention. AI and AIOps for PostgreSQL and SQL Server, by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-violet-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html"   class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"       class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Books</a>
+        <a href="index.html"         class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Book 2 Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-violet-400 hover:text-violet-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-violet-900/40 border border-violet-800/40 text-violet-300 text-xs rounded-full font-medium">Chapter 9 of 20</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 9: Predictive Incident Prevention</h2>
+
+<p class="text-gray-300 leading-relaxed">Reactive incident response is the defining failure mode of traditional database operations. By the time an alert fires, a query has timed out, or a disk fills to capacity, the damage is already measured in user impact, lost transactions, and on-call engineer hours. Predictive incident prevention inverts this model entirely: instead of responding to failure signals, AI-driven systems learn the behavioral signatures that precede failures and intervene before users ever notice a degradation. This chapter builds a complete picture of how modern DBAs use machine learning, time-series anomaly detection, and large language model reasoning to move PostgreSQL and SQL Server environments from reactive firefighting into a genuinely proactive operational posture. You will leave with working code, architectural patterns, and the hard-won judgment required to deploy these systems in production without drowning in false alarms.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">The Anatomy of a Predictable Incident</h3>
+
+<p class="text-gray-300 leading-relaxed">Almost every database incident that looks sudden in retrospect was telegraphed hours or days in advance. Autovacuum falling behind on a high-churn table. Connection pool pressure creeping upward on Tuesday afternoons because of a weekly batch job. A tempdb growth curve that mirrors last quarter's capacity event almost exactly. The signals were present; the operational infrastructure to interpret them was not.</p>
+
+<p class="text-gray-300 leading-relaxed">Understanding *why* incidents are predictable is prerequisite to building systems that predict them. Database failures follow recognizable precursor patterns because database engines are deterministic systems operating under resource constraints. The failure modes are finite: disk exhaustion, memory pressure, lock contention, connection starvation, query plan degradation, replication lag, and I/O saturation cover the vast majority of production incidents. Each has measurable leading indicators with characteristic temporal signatures — some look like monotonic trends, others look like periodic cycles with amplitude drift, and a few look like sudden step changes that precede collapse.</p>
+
+<p class="text-gray-300 leading-relaxed">The challenge is not that the data is unavailable. Modern monitoring stacks — Prometheus scraping PostgreSQL exporters, Azure Monitor collecting SQL Server DMV snapshots, custom Telegraf pipelines — produce enormous volumes of metrics. The challenge is that human operators cannot continuously evaluate hundreds of metric streams across dozens of database instances, weight them against historical baselines, and identify which combinations of mild deviations represent emergent risk. That pattern recognition, executed continuously and at scale, is precisely what machine learning is built for.</p>
+
+<p class="text-gray-300 leading-relaxed">Before wiring up any ML pipeline, it pays to catalog your actual incident history and tag each incident with the metrics that were moving in the hours before it manifested. This retrospective labeling exercise almost always reveals that 80% of incidents share precursor fingerprints with prior events. Those fingerprints become your training signal.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Build a retrospective incident precursor dataset by correlating
+-- pg_stat_bgwriter snapshots with known incident timestamps stored
+-- in a simple incident log table.
+
+CREATE TABLE incident_log (
+    incident_id     SERIAL PRIMARY KEY,
+    started_at      TIMESTAMPTZ NOT NULL,
+    resolved_at     TIMESTAMPTZ,
+    incident_type   TEXT NOT NULL,          -- 'disk_full','lock_storm','vacuum_bloat', etc.
+    affected_db     TEXT NOT NULL,
+    severity        SMALLINT CHECK (severity BETWEEN 1 AND 5),
+    notes           TEXT
+);
+
+-- Pull bgwriter pressure metrics in the 4-hour window before each incident
+WITH incident_windows AS (
+    SELECT
+        i.incident_id,
+        i.incident_type,
+        i.started_at,
+        i.started_at - INTERVAL '4 hours' AS window_start
+    FROM incident_log i
+    WHERE i.started_at &gt;= NOW() - INTERVAL '90 days'
+),
+bgwriter_deltas AS (
+    SELECT
+        s.collected_at,
+        s.buffers_clean,
+        s.maxwritten_clean,
+        s.buffers_alloc,
+        LAG(s.buffers_alloc)  OVER (ORDER BY s.collected_at) AS prev_alloc,
+        LAG(s.maxwritten_clean) OVER (ORDER BY s.collected_at) AS prev_maxwritten
+    FROM pg_stat_bgwriter_history s   -- assumes a custom collection table
+)
+SELECT
+    iw.incident_id,
+    iw.incident_type,
+    AVG(bd.buffers_alloc - COALESCE(bd.prev_alloc, 0))     AS avg_alloc_rate,
+    SUM(bd.maxwritten_clean - COALESCE(bd.prev_maxwritten, 0)) AS total_maxwritten_delta,
+    COUNT(*)                                                AS sample_count
+FROM incident_windows iw
+JOIN bgwriter_deltas bd
+    ON bd.collected_at BETWEEN iw.window_start AND iw.started_at
+GROUP BY iw.incident_id, iw.incident_type
+ORDER BY iw.incident_id;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Equivalent retrospective analysis using SQL Server ring buffer
+-- and a custom incident_log table, pulling wait statistics
+-- in the window preceding each logged incident.
+
+CREATE TABLE dbo.incident_log (
+    incident_id    INT IDENTITY(1,1) PRIMARY KEY,
+    started_at     DATETIME2(3)  NOT NULL,
+    resolved_at    DATETIME2(3),
+    incident_type  NVARCHAR(64)  NOT NULL,
+    affected_db    NVARCHAR(128) NOT NULL,
+    severity       TINYINT       CHECK (severity BETWEEN 1 AND 5),
+    notes          NVARCHAR(MAX)
+);
+
+-- Pull cumulative wait stats snapshots vs. incident windows
+-- (assumes a scheduled job populates dbo.wait_stats_history)
+WITH incident_windows AS (
+    SELECT
+        incident_id,
+        incident_type,
+        started_at,
+        DATEADD(HOUR, -4, started_at) AS window_start
+    FROM dbo.incident_log
+    WHERE started_at &gt;= DATEADD(DAY, -90, GETUTCDATE())
+),
+wait_deltas AS (
+    SELECT
+        h.snapshot_time,
+        h.wait_type,
+        h.waiting_tasks_count,
+        h.wait_time_ms,
+        LAG(h.wait_time_ms) OVER (PARTITION BY h.wait_type ORDER BY h.snapshot_time)
+            AS prev_wait_ms
+    FROM dbo.wait_stats_history h
+)
+SELECT
+    iw.incident_id,
+    iw.incident_type,
+    wd.wait_type,
+    SUM(wd.wait_time_ms - COALESCE(wd.prev_wait_ms, 0)) AS cumulative_wait_delta_ms,
+    AVG(wd.waiting_tasks_count)                          AS avg_waiting_tasks,
+    COUNT(*)                                             AS sample_count
+FROM incident_windows iw
+JOIN wait_deltas wd
+    ON wd.snapshot_time BETWEEN iw.window_start AND iw.started_at
+GROUP BY iw.incident_id, iw.incident_type, wd.wait_type
+HAVING SUM(wd.wait_time_ms - COALESCE(wd.prev_wait_ms, 0)) &gt; 0
+ORDER BY cumulative_wait_delta_ms DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">This retrospective labeling is not just an analytical exercise. It directly populates the feature matrix you will use to train anomaly detection and classification models in subsequent sections.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Time-Series Anomaly Detection for Database Metrics</h3>
+
+<p class="text-gray-300 leading-relaxed">Time-series anomaly detection is the foundational layer of predictive incident prevention. The goal is not to predict a specific incident but to identify metric streams that are behaving in ways inconsistent with learned normal behavior — and to do so early enough that intervention remains cheap.</p>
+
+<p class="text-gray-300 leading-relaxed">For database metrics, three anomaly archetypes dominate: <strong class="text-white">point anomalies</strong> (a single metric observation that is statistically unusual given recent history), <strong class="text-white">contextual anomalies</strong> (a value that is normal globally but anomalous given the time of day, day of week, or surrounding context), and <strong class="text-white">collective anomalies</strong> (a sequence of individually plausible values that together represent an unusual pattern). A single connection count spike may be a point anomaly. Autovacuum worker count being zero during a high-write window is contextual. Slow, steady growth in dead tuple count across three days followed by a planner regression is collective.</p>
+
+<p class="text-gray-300 leading-relaxed">Each archetype requires a different detection approach. For point anomalies, statistical process control methods — particularly z-score rolling windows and exponentially weighted moving averages — remain remarkably effective and cheap to operate. For contextual anomalies, you need models that incorporate time features. For collective anomalies, sequence models or change-point detection algorithms are necessary.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Facebook Prophet</strong> remains a workhorse for time-series forecasting with strong seasonal decomposition, making it well-suited to database metrics that follow business-hour and weekly patterns. <strong class="text-white">Isolation Forest</strong> from scikit-learn handles multivariate point and contextual anomalies efficiently. For streaming anomaly detection with low latency, <strong class="text-white">ADTK (Anomaly Detection Toolkit)</strong> provides composable detectors that integrate naturally into Prometheus-backed pipelines.</p>
+
+<p class="text-gray-300 leading-relaxed">The following Python pipeline demonstrates a practical Isolation Forest implementation trained on PostgreSQL metrics collected via the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">postgres_exporter</code> Prometheus scrape:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import psycopg2
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
+import joblib
+import json
+from datetime import datetime, timezone
+
+# --- Feature extraction from metrics database ---
+# This assumes Prometheus remote_write is configured to push
+# postgres_exporter metrics into a TimescaleDB hypertable.
+
+METRICS_DSN = "postgresql://metrics_reader:***@timescale-host:5432/metrics"
+
+FEATURE_QUERY = """
+SELECT
+    time_bucket('5 minutes', time)                          AS bucket,
+    AVG(value) FILTER (WHERE metric_name = 'pg_stat_bgwriter_buffers_alloc')
+                                                            AS buffers_alloc,
+    AVG(value) FILTER (WHERE metric_name = 'pg_stat_bgwriter_maxwritten_clean')
+                                                            AS maxwritten_clean,
+    AVG(value) FILTER (WHERE metric_name = 'pg_locks_count')
+                                                            AS lock_count,
+    AVG(value) FILTER (WHERE metric_name = 'pg_stat_activity_count'
+                        AND labels-&gt;&gt;'state' = 'idle in transaction')
+                                                            AS idle_in_xact,
+    AVG(value) FILTER (WHERE metric_name = 'pg_database_size_bytes')
+                                                            AS db_size_bytes,
+    EXTRACT(DOW  FROM time_bucket('5 minutes', time))      AS day_of_week,
+    EXTRACT(HOUR FROM time_bucket('5 minutes', time))      AS hour_of_day
+FROM prometheus_metrics
+WHERE time &gt;= NOW() - INTERVAL '60 days'
+  AND metric_name IN (
+        'pg_stat_bgwriter_buffers_alloc',
+        'pg_stat_bgwriter_maxwritten_clean',
+        'pg_locks_count',
+        'pg_stat_activity_count',
+        'pg_database_size_bytes'
+      )
+GROUP BY bucket
+ORDER BY bucket;
+"""
+
+def load_training_features(dsn: str, query: str) -&gt; pd.DataFrame:
+    conn = psycopg2.connect(dsn)
+    df = pd.read_sql(query, conn)
+    conn.close()
+    df = df.dropna()
+    # Encode cyclical time features to preserve periodicity
+    df['hour_sin'] = np.sin(2 * np.pi * df['hour_of_day'] / 24)
+    df['hour_cos'] = np.cos(2 * np.pi * df['hour_of_day'] / 24)
+    df['dow_sin']  = np.sin(2 * np.pi * df['day_of_week'] / 7)
+    df['dow_cos']  = np.cos(2 * np.pi * df['day_of_week'] / 7)
+    return df.drop(columns=['bucket', 'day_of_week', 'hour_of_day'])
+
+def train_isolation_forest(df: pd.DataFrame) -&gt; tuple:
+    feature_cols = [c for c in df.columns]
+    X = df[feature_cols].values
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    model = IsolationForest(
+        n_estimators=200,
+        contamination=0.02,   # expect ~2% anomalous windows in training data
+        max_features=0.8,
+        random_state=42,
+        n_jobs=-1
+    )
+    model.fit(X_scaled)
+    return model, scaler, feature_cols
+
+if __name__ == "__main__":
+    df = load_training_features(METRICS_DSN, FEATURE_QUERY)
+    model, scaler, features = train_isolation_forest(df)
+    joblib.dump({'model': model, 'scaler': scaler, 'features': features},
+                '/opt/dbai/models/pg_anomaly_iforest.pkl')
+    print(f"Model trained on {len(df)} samples. Features: {features}")</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Once deployed, inference runs on a tight loop against fresh 5-minute metric windows. Isolation Forest's scoring mechanism (<code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">decision_function</code> returning negative scores for anomalies) provides a continuous risk signal rather than a binary flag, which is critical for building graduated alerting — you want to page someone only when the anomaly score crosses a high-confidence threshold, not every time a metric twitches.</p>
+
+<p class="text-gray-300 leading-relaxed">The model artifact is versioned alongside the database configuration it was trained against. When you migrate to a new hardware tier, add a replica, or substantially change workload patterns, you retrain. Treating ML models as deployment artifacts with the same lifecycle discipline as application code is non-negotiable in production.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Building a Multi-Signal Risk Scoring Engine</h3>
+
+<p class="text-gray-300 leading-relaxed">Individual metric anomalies are noisy. A single metric crossing a threshold — even a learned statistical threshold — produces false positive rates that quickly exhaust operator trust. The architecture that actually works in production is a <strong class="text-white">risk scoring engine</strong> that aggregates signals from multiple detectors, weights them by historical predictive accuracy, and outputs a composite incident probability score for each database instance on a continuous basis.</p>
+
+<p class="text-gray-300 leading-relaxed">This is architecturally equivalent to ensemble learning for predictions, but applied to operational signals. Think of each anomaly detector as a weak learner whose individual signal is unreliable, and the ensemble layer as the mechanism that synthesizes reliable incident risk from unreliable components.</p>
+
+<p class="text-gray-300 leading-relaxed">The practical implementation uses a <strong class="text-white">gradient-boosted classifier</strong> trained on the retrospective incident dataset you built in the first section. Features are the output anomaly scores from your individual detectors (Isolation Forest scores, Prophet forecast residuals, threshold exceedance flags, rate-of-change features) plus lag features capturing the recent history of each signal. The target variable is binary: did a production incident occur within the next two hours?</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Store per-instance risk scores produced by the scoring engine
+-- for trending, alerting threshold evaluation, and audit trail.
+
+CREATE TABLE IF NOT EXISTS db_risk_scores (
+    score_id        BIGSERIAL PRIMARY KEY,
+    scored_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    instance_id     TEXT NOT NULL,          -- hostname:port or cluster alias
+    db_name         TEXT NOT NULL,
+    risk_score      NUMERIC(5,4) NOT NULL,  -- 0.0000 to 1.0000
+    top_signals     JSONB,                  -- contributing feature scores
+    model_version   TEXT NOT NULL,
+    alert_threshold NUMERIC(5,4) NOT NULL DEFAULT 0.75
+);
+
+CREATE INDEX CONCURRENTLY idx_risk_scores_instance_time
+    ON db_risk_scores (instance_id, scored_at DESC);
+
+CREATE INDEX CONCURRENTLY idx_risk_scores_high_risk
+    ON db_risk_scores (scored_at DESC)
+    WHERE risk_score &gt;= 0.60;
+
+-- Query: instances that have been continuously elevated for &gt; 30 min
+-- (useful for suppressing transient spikes from alert logic)
+SELECT
+    instance_id,
+    db_name,
+    MIN(scored_at)                  AS elevated_since,
+    MAX(risk_score)                 AS peak_risk,
+    AVG(risk_score)                 AS avg_risk,
+    COUNT(*)                        AS elevated_windows
+FROM db_risk_scores
+WHERE scored_at &gt;= NOW() - INTERVAL '2 hours'
+  AND risk_score &gt;= 0.60
+GROUP BY instance_id, db_name
+HAVING MIN(scored_at) &lt;= NOW() - INTERVAL '30 minutes'
+ORDER BY avg_risk DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Equivalent risk score storage and sustained-elevation query for SQL Server
+
+CREATE TABLE dbo.db_risk_scores (
+    score_id        BIGINT IDENTITY(1,1) PRIMARY KEY,
+    scored_at       DATETIME2(3)   NOT NULL DEFAULT SYSUTCDATETIME(),
+    instance_id     NVARCHAR(256)  NOT NULL,
+    db_name         NVARCHAR(128)  NOT NULL,
+    risk_score      DECIMAL(5,4)   NOT NULL,
+    top_signals     NVARCHAR(MAX),           -- JSON string
+    model_version   NVARCHAR(64)   NOT NULL,
+    alert_threshold DECIMAL(5,4)   NOT NULL DEFAULT 0.75
+);
+
+CREATE INDEX idx_risk_scores_instance_time
+    ON dbo.db_risk_scores (instance_id, scored_at DESC)
+    INCLUDE (risk_score, db_name);
+
+-- Instances with sustained elevated risk (&gt;30 min above 0.60)
+SELECT
+    instance_id,
+    db_name,
+    MIN(scored_at)          AS elevated_since,
+    MAX(risk_score)         AS peak_risk,
+    AVG(risk_score)         AS avg_risk,
+    COUNT(*)                AS elevated_windows
+FROM dbo.db_risk_scores
+WHERE scored_at &gt;= DATEADD(HOUR, -2, SYSUTCDATETIME())
+  AND risk_score &gt;= 0.60
+GROUP BY instance_id, db_name
+HAVING MIN(scored_at) &lt;= DATEADD(MINUTE, -30, SYSUTCDATETIME())
+ORDER BY avg_risk DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The gradient-boosted classifier layer is trained offline and updated on a cadence you define — weekly retraining works for most environments, with triggered retraining when the model's false positive or false negative rate drifts beyond an acceptable band. The critical operational discipline is <strong class="text-white">probability calibration</strong>: raw classifier output probabilities are notoriously miscalibrated on imbalanced datasets (incidents are rare relative to normal periods). Apply isotonic regression or Platt scaling after training so the 0.75 risk score you're alerting on actually corresponds to a 75% historical incident rate in that window.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>from sklearn.calibration import CalibratedClassifierCV
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.model_selection import TimeSeriesSplit
+import pandas as pd
+import numpy as np
+import joblib
+
+def train_risk_scorer(feature_df: pd.DataFrame,
+                      labels: pd.Series,
+                      model_path: str) -&gt; dict:
+    """
+    Train a calibrated gradient-boosted risk scorer.
+    feature_df: rows are 5-min windows; columns are anomaly scores + lag features
+    labels: 1 if an incident started within 2 hours of this window, else 0
+    """
+    # TimeSeriesSplit respects temporal ordering — do not use KFold here.
+    tscv = TimeSeriesSplit(n_splits=5, gap=24)  # gap=24 prevents leakage (24 * 5min = 2hr)
+
+    base_clf = GradientBoostingClassifier(
+        n_estimators=400,
+        learning_rate=0.05,
+        max_depth=4,
+        subsample=0.8,
+        min_samples_leaf=20,
+        random_state=42
+    )
+
+    # Calibrate using isotonic regression on temporal hold-out
+    calibrated_clf = CalibratedClassifierCV(
+        base_clf,
+        cv=tscv,
+        method='isotonic'
+    )
+
+    X = feature_df.values
+    y = labels.values
+
+    calibrated_clf.fit(X, y)
+
+    # Evaluate on final temporal split
+    split_idx = list(tscv.split(X))[-1][1]
+    X_test, y_test = X[split_idx], y[split_idx]
+    proba_test = calibrated_clf.predict_proba(X_test)[:, 1]
+
+    from sklearn.metrics import roc_auc_score, average_precision_score
+    metrics = {
+        'roc_auc':  roc_auc_score(y_test, proba_test),
+        'avg_precision': average_precision_score(y_test, proba_test),
+        'n_train':  len(X) - len(split_idx),
+        'n_test':   len(split_idx),
+        'incident_rate': y.mean()
+    }
+
+    joblib.dump({
+        'model': calibrated_clf,
+        'feature_names': list(feature_df.columns),
+        'metrics': metrics
+    }, model_path)
+
+    print(f"Risk scorer trained | ROC-AUC: {metrics['roc_auc']:.3f} | "
+          f"Avg Precision: {metrics['avg_precision']:.3f}")
+    return metrics</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Average precision score is the right evaluation metric here, not accuracy or even ROC-AUC alone, because your dataset will be heavily imbalanced. A model that predicts "no incident" for every window achieves 98%+ accuracy in most environments but is operationally useless. Average precision penalizes missed detections against a background of normal periods in exactly the way production alerting requires.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">LLM-Augmented Incident Diagnosis and Runbook Generation</h3>
+
+<p class="text-gray-300 leading-relaxed">Risk scores and anomaly alerts tell you that something is wrong. They do not tell you *what* to do about it. This gap — between detection and remediation — is where large language models deliver substantial operational leverage in predictive incident workflows.</p>
+
+<p class="text-gray-300 leading-relaxed">The pattern that works is not asking an LLM to diagnose raw metrics. It is constructing a structured context payload that includes the top contributing signals, recent configuration changes, query workload fingerprints, and the historical incident records that match the current signal profile, then asking the LLM to synthesize a diagnosis and recommended intervention sequence. The LLM is reasoning over curated operational context, not performing statistical inference over raw data.</p>
+
+<p class="text-gray-300 leading-relaxed">This is architecturally a <strong class="text-white">retrieval-augmented generation</strong> pattern. A vector store (pgvector on PostgreSQL is a natural fit) holds embeddings of past incident post-mortems, standard operating procedures, and documentation. At alert time, the risk scorer's top contributing signals are encoded and used to retrieve the most semantically relevant historical context, which is bundled into the LLM prompt alongside current metrics.</p>
+
+    </div>
+    <div class="mt-14 bg-violet-950/40 border border-violet-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The AI-Powered DBA</div>
+  </footer>
+</body>
+</html>
