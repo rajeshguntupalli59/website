@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 12: AI-Driven Capacity Planning — The AI-Powered DBA</title>
+  <meta name="description" content="The AI-Powered DBA Chapter 12: AI-Driven Capacity Planning. AI and AIOps for PostgreSQL and SQL Server, by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-violet-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html"   class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"       class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Books</a>
+        <a href="index.html"         class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Book 2 Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-violet-400 hover:text-violet-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-violet-900/40 border border-violet-800/40 text-violet-300 text-xs rounded-full font-medium">Chapter 12 of 20</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 12: AI-Driven Capacity Planning</h2>
+
+<p class="text-gray-300 leading-relaxed">Capacity planning has always been the DBA's most uncomfortable discipline. You're asked to predict the future with incomplete data, justify hardware budgets to finance teams who want certainty, and guarantee SLAs for workloads that haven't been written yet. Traditional approaches—linear trend lines, gut feel from years of experience, vendor sizing guides—work until they don't, and they typically fail at the worst possible moments: during rapid business growth, seasonal surges, or after a major product launch. AI-driven capacity planning doesn't eliminate uncertainty, but it dramatically narrows the confidence intervals, automates the repetitive work of data collection and analysis, and surfaces patterns that human observers routinely miss. This chapter walks through building a practical, production-grade capacity planning system that combines time-series forecasting, LLM-assisted analysis, and automated alerting for PostgreSQL and SQL Server environments.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Why Traditional Capacity Planning Fails at Scale</h3>
+
+<p class="text-gray-300 leading-relaxed">The fundamental problem with traditional capacity planning is that it treats database growth as a smooth, predictable process. In practice, growth is lumpy, nonlinear, and driven by business events that your monitoring system knows nothing about. A marketing campaign launches on Thursday. A new microservice starts hammering a previously quiet table. A developer deploys a missing index fix that suddenly causes a query that was timing out to actually complete—and now it runs ten thousand times per hour instead of zero.</p>
+
+<p class="text-gray-300 leading-relaxed">Most DBAs rely on one of three broken approaches. The first is pure extrapolation: pull the last 90 days of storage growth, fit a line, add 20% buffer, and present that number to procurement. This works in stable environments. It fails spectacularly when growth is exponential or when it has already flattened due to archiving activity you've forgotten about. The second approach is threshold-based alerting: alert when disk is 80% full, add capacity when it hits 85%. This is reactive rather than predictive and provides almost no runway for procurement cycles that take four to eight weeks. The third approach is annual capacity reviews: a spreadsheet exercise done once a year that's obsolete within 90 days of completion.</p>
+
+<p class="text-gray-300 leading-relaxed">AI-driven capacity planning addresses these failures along three dimensions. First, it handles nonlinear patterns. Machine learning models—specifically gradient boosting and neural forecasting methods—can learn that your database grows slowly from Monday through Wednesday, spikes on Thursday when ETL jobs land, and then plateaus on weekends. They can model seasonality at multiple frequencies simultaneously: daily, weekly, monthly, and annual. Second, it incorporates contextual signals. A pure storage-growth model knows nothing about your application's transaction volume. An ML model trained on correlated features—rows inserted per hour, active connections, buffer cache hit rates, query throughput—understands that storage growth is downstream of transaction activity and can forecast capacity by first forecasting the business drivers. Third, it produces calibrated uncertainty estimates. When you tell your CTO you need 4TB of additional storage in 90 days, an AI-backed forecast can also tell you there's a 90% probability that the true requirement falls between 3.2TB and 5.1TB. That confidence interval is information that a linear trend line simply cannot give you.</p>
+
+<p class="text-gray-300 leading-relaxed">Before building forecasting models, you need reliable time-series data. Too many capacity planning failures trace back to metric collection gaps—systems that store only hourly averages when you need per-minute granularity, or that roll up data after 30 days precisely when you need it for seasonal analysis. The collection infrastructure matters as much as the models built on top of it.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Building the Metric Collection Foundation</h3>
+
+<p class="text-gray-300 leading-relaxed">A capacity planning system is only as good as its data pipeline. For this chapter, the architecture assumes Prometheus for metric scraping, with postgres_exporter and the SQL Server exporter providing database-specific metrics, all stored in a long-retention TimescaleDB instance (PostgreSQL with time-series extensions) or in Azure Monitor / Amazon CloudWatch for cloud-native deployments.</p>
+
+<p class="text-gray-300 leading-relaxed">The metrics you need for capacity planning fall into three categories: storage metrics, compute metrics, and workload metrics. Storage metrics include total database size, table-level sizes, index sizes, WAL generation rate, and temporary file usage. Compute metrics cover CPU utilization, memory pressure indicators (buffer cache hit rates, page life expectancy on SQL Server), and I/O throughput. Workload metrics capture transactions per second, active sessions, lock wait events, and query execution counts.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Comprehensive size collection query for capacity planning
+-- Run this on a schedule and insert into your metrics table
+
+SELECT
+    current_database()                          AS database_name,
+    NOW()                                       AS collected_at,
+    pg_database_size(current_database())        AS database_bytes,
+    SUM(pg_total_relation_size(c.oid))
+        FILTER (WHERE c.relkind = 'r')          AS table_bytes,
+    SUM(pg_total_relation_size(c.oid))
+        FILTER (WHERE c.relkind = 'i')          AS index_bytes,
+    (SELECT count(*) FROM pg_stat_activity
+     WHERE state = 'active'
+       AND pid &lt;&gt; pg_backend_pid())             AS active_connections,
+    (SELECT sum(xact_commit + xact_rollback)
+     FROM pg_stat_database
+     WHERE datname = current_database())        AS total_transactions,
+    (SELECT sum(blks_hit)::float /
+            NULLIF(sum(blks_hit + blks_read), 0)
+     FROM pg_stat_database
+     WHERE datname = current_database())        AS buffer_hit_ratio,
+    (SELECT sum(temp_bytes)
+     FROM pg_stat_database
+     WHERE datname = current_database())        AS temp_bytes_used
+FROM
+    pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE
+    n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast');</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Comprehensive size and workload collection for capacity planning
+SELECT
+    DB_NAME()                                   AS database_name,
+    GETUTCDATE()                                AS collected_at,
+    SUM(size * 8 * 1024)                        AS database_bytes,
+    SUM(CASE WHEN type_desc = 'ROWS'
+             THEN size * 8 * 1024 END)          AS data_bytes,
+    SUM(CASE WHEN type_desc = 'LOG'
+             THEN size * 8 * 1024 END)          AS log_bytes,
+    (SELECT COUNT(*)
+     FROM sys.dm_exec_sessions
+     WHERE is_user_process = 1
+       AND status = 'running')                  AS active_connections,
+    (SELECT SUM(cntr_value)
+     FROM sys.dm_os_performance_counters
+     WHERE counter_name = 'Transactions/sec'
+       AND instance_name = DB_NAME())           AS transactions_per_sec,
+    (SELECT cntr_value
+     FROM sys.dm_os_performance_counters
+     WHERE counter_name = 'Page life expectancy'
+       AND object_name LIKE '%Buffer Manager%') AS page_life_expectancy,
+    (SELECT SUM(user_seeks + user_scans + user_lookups + user_updates)
+     FROM sys.dm_db_index_usage_stats
+     WHERE database_id = DB_ID())               AS total_index_operations
+FROM
+    sys.database_files;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Store these snapshots in a dedicated capacity metrics table. If you're running PostgreSQL, TimescaleDB's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">create_hypertable</code> function handles partitioning automatically and provides the time-series query functions you'll need later. For SQL Server shops, Azure Monitor custom metrics or a dedicated staging database with a datetime-partitioned table works well. The collection interval matters: for storage metrics, 15-minute intervals are sufficient. For workload metrics that drive your forecasts, 1-minute intervals give you enough granularity to capture intraday patterns without overwhelming storage.</p>
+
+<p class="text-gray-300 leading-relaxed">The Python collection harness that wraps these queries and feeds Prometheus looks like this:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import psycopg2
+import pyodbc
+import time
+import logging
+from prometheus_client import Gauge, start_http_server
+from datetime import datetime
+from typing import Dict, Any
+
+# Prometheus metrics
+pg_db_size_bytes = Gauge(
+    'pg_database_size_bytes',
+    'Total PostgreSQL database size in bytes',
+    ['database', 'host']
+)
+pg_buffer_hit_ratio = Gauge(
+    'pg_buffer_hit_ratio',
+    'Buffer cache hit ratio (0-1)',
+    ['database', 'host']
+)
+pg_active_connections = Gauge(
+    'pg_active_connections',
+    'Active database connections',
+    ['database', 'host']
+)
+mssql_db_size_bytes = Gauge(
+    'mssql_database_size_bytes',
+    'Total SQL Server database size in bytes',
+    ['database', 'host']
+)
+mssql_ple = Gauge(
+    'mssql_page_life_expectancy',
+    'SQL Server page life expectancy in seconds',
+    ['host']
+)
+
+
+def collect_postgres_metrics(conn_string: str, host: str) -&gt; None:
+    """Collect capacity-relevant metrics from PostgreSQL."""
+    query = """
+        SELECT
+            current_database() AS db_name,
+            pg_database_size(current_database()) AS db_bytes,
+            (SELECT sum(blks_hit)::float /
+                    NULLIF(sum(blks_hit + blks_read), 0)
+             FROM pg_stat_database
+             WHERE datname = current_database()) AS hit_ratio,
+            (SELECT count(*) FROM pg_stat_activity
+             WHERE state = 'active'
+               AND pid &lt;&gt; pg_backend_pid()) AS active_conns
+    """
+    try:
+        with psycopg2.connect(conn_string) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                row = cur.fetchone()
+                db_name, db_bytes, hit_ratio, active_conns = row
+
+                pg_db_size_bytes.labels(
+                    database=db_name, host=host
+                ).set(db_bytes or 0)
+
+                pg_buffer_hit_ratio.labels(
+                    database=db_name, host=host
+                ).set(hit_ratio or 0)
+
+                pg_active_connections.labels(
+                    database=db_name, host=host
+                ).set(active_conns or 0)
+
+    except Exception as e:
+        logging.error(f"PostgreSQL metric collection failed on {host}: {e}")
+
+
+def collect_sqlserver_metrics(conn_string: str, host: str) -&gt; None:
+    """Collect capacity-relevant metrics from SQL Server."""
+    size_query = """
+        SELECT DB_NAME(), SUM(size * 8 * 1024)
+        FROM sys.database_files
+    """
+    ple_query = """
+        SELECT cntr_value
+        FROM sys.dm_os_performance_counters
+        WHERE counter_name = 'Page life expectancy'
+          AND object_name LIKE '%Buffer Manager%'
+    """
+    try:
+        with pyodbc.connect(conn_string) as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(size_query)
+            db_name, db_bytes = cursor.fetchone()
+            mssql_db_size_bytes.labels(
+                database=db_name, host=host
+            ).set(db_bytes or 0)
+
+            cursor.execute(ple_query)
+            ple_row = cursor.fetchone()
+            if ple_row:
+                mssql_ple.labels(host=host).set(ple_row[0])
+
+    except Exception as e:
+        logging.error(f"SQL Server metric collection failed on {host}: {e}")
+
+
+if __name__ == "__main__":
+    start_http_server(9200)
+    logging.basicConfig(level=logging.INFO)
+
+    pg_hosts = [
+        ("postgresql://dba_monitor:secret@pg-prod-01/appdb", "pg-prod-01"),
+        ("postgresql://dba_monitor:secret@pg-prod-02/appdb", "pg-prod-02"),
+    ]
+    mssql_hosts = [
+        ("DRIVER={ODBC Driver 17 for SQL Server};SERVER=sql-prod-01;"
+         "DATABASE=AppDB;UID=sa;PWD=secret", "sql-prod-01"),
+    ]
+
+    logging.info("Starting capacity metrics exporter on :9200")
+    while True:
+        for conn_str, host in pg_hosts:
+            collect_postgres_metrics(conn_str, host)
+        for conn_str, host in mssql_hosts:
+            collect_sqlserver_metrics(conn_str, host)
+        time.sleep(60)</code></pre>
+
+<p class="text-gray-300 leading-relaxed">With this pipeline running, you accumulate the historical data that feeds your forecasting models. Six months of data is the minimum viable history for models that need to learn weekly and monthly seasonality. A full year gives you annual seasonality, which matters for any business with predictable fiscal or holiday cycles.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Forecasting Growth with Time-Series Models</h3>
+
+<p class="text-gray-300 leading-relaxed">With a solid data foundation in place, the forecasting work begins. The goal is to predict resource consumption 30, 60, and 90 days into the future with calibrated confidence intervals. For production use, two model families consistently outperform simpler approaches: Prophet (Meta's open-source time-series forecasting library) for its automatic seasonality handling, and gradient boosting models like LightGBM when you want to incorporate external features such as application transaction counts or planned data loads.</p>
+
+<p class="text-gray-300 leading-relaxed">Prophet is the right starting point for most teams. It handles missing data gracefully, automatically decomposes seasonality at multiple frequencies, and exposes changepoints that correspond to real business events. Its uncertainty intervals are Bayesian and have meaningful probabilistic interpretations—a significant advantage when you're presenting forecasts to stakeholders who need to understand the risk of under-provisioning.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import pandas as pd
+import numpy as np
+from prophet import Prophet
+from prophet.diagnostics import cross_validation, performance_metrics
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+import psycopg2
+import json
+from typing import Tuple, Dict
+
+
+def load_postgres_growth_history(
+    conn_string: str,
+    database: str,
+    days_back: int = 365
+) -&gt; pd.DataFrame:
+    """
+    Load historical database size metrics from TimescaleDB metrics store.
+    Expects a table: capacity_metrics(collected_at TIMESTAMPTZ, 
+                                      database_name TEXT, 
+                                      database_bytes BIGINT, 
+                                      active_connections INT,
+                                      transactions_total BIGINT)
+    """
+    query = """
+        SELECT
+            date_trunc('hour', collected_at) AS ds,
+            AVG(database_bytes)              AS db_bytes,
+            AVG(active_connections)          AS connections,
+            MAX(transactions_total) -
+                MIN(transactions_total)      AS hourly_transactions
+        FROM capacity_metrics
+        WHERE database_name = %(database)s
+          AND collected_at &gt;= NOW() - INTERVAL '%(days)s days'
+        GROUP BY date_trunc('hour', collected_at)
+        ORDER BY 1
+    """
+    with psycopg2.connect(conn_string) as conn:
+        df = pd.read_sql(
+            query,
+            conn,
+            params={'database': database, 'days': days_back}
+        )
+
+    # Prophet requires columns named 'ds' and 'y'
+    df['ds'] = pd.to_datetime(df['ds'])
+    df['y'] = df['db_bytes'] / (1024 ** 3)  # Convert to GB for readability
+    return df
+
+
+def build_storage_forecast(
+    df: pd.DataFrame,
+    forecast_days: int = 90,
+    seasonality_mode: str = 'multiplicative'
+) -&gt; Tuple[pd.DataFrame, Prophet]:
+    """
+    Build a storage growth forecast using Prophet.
+    Returns the forecast dataframe and the fitted model.
+    """
+    model = Prophet(
+        seasonality_mode=seasonality_mode,
+        yearly_seasonality=True,
+        weekly_seasonality=True,
+        daily_seasonality=True,
+        changepoint_prior_scale=0.05,  # Regularize against overfitting
+        interval_width=0.90            # 90% confidence intervals
+    )
+
+    # Add connection count as an external regressor
+    # This captures workload-driven growth, not just time
+    if 'connections' in df.columns:
+        model.add_regressor('connections')
+
+    model.fit(df[['ds', 'y', 'connections']].dropna())
+
+    # Build future dataframe
+    future = model.make_future_dataframe(
+        periods=forecast_days * 24,
+        freq='H'
+    )
+
+    # For the future period, forward-fill the last known connection count
+    # In production, you'd feed in predicted workload here
+    last_connections = df['connections'].iloc[-168:].mean()  # Last week avg
+    future['connections'] = df.set_index('ds')['connections'].reindex(
+        future['ds']
+    ).fillna(last_connections).values
+
+    forecast = model.predict(future)
+    return forecast, model
+
+
+def extract_capacity_milestones(
+    forecast: pd.DataFrame,
+    current_capacity_gb: float,
+    thresholds: list = [0.70, 0.80, 0.90]
+) -&gt; Dict:
+    """
+    Find the predicted date at which storage reaches each threshold.
+    Returns dates and confidence bounds for each milestone.
+    """
+    milestones = {}
+    future_only = forecast[forecast['ds'] &gt; datetime.now()]
+
+    for threshold in thresholds:
+        target_gb = current_capacity_gb * threshold
+        breach_rows = future_only[future_only['yhat'] &gt;= target_gb]
+
+        if breach_rows.empty:
+            milestones[f'{int(threshold*100)}pct'] = {
+                'breach_date': None,
+                'within_forecast_window': False
+            }
+        else:
+            first_breach = breach_rows.iloc[0]
+            # Find when even the pessimistic bound (yhat_upper) breaches
+            pessimistic_breach = future_only[
+                future_only['yhat_upper'] &gt;= target_gb
+            ]
+            milestones[f'{int(threshold*100)}pct'] = {
+                'breach_date': first_breach['ds'].strftime('%Y-%m-%d'),
+                'pessimistic_date': (
+                    pessimistic_breach.iloc[0]['ds'].strftime('%Y-%m-%d')
+                    if not pessimistic_breach.empty else None
+                ),
+                'predicted_size_gb': round(first_breach['yhat'], 2),
+                'within_forecast_window': True
+            }
+
+    return milestones
+
+
+# Example usage
+if __name__ == "__main__":
+    METRICS_CONN = "postgresql://dba_monitor:secret@metrics-db/cap_metrics"
+    CURRENT_CAPACITY_GB = 2048  # 2TB allocated
+
+    df = load_postgres_growth_history(METRICS_CONN, "appdb", days_back=365)
+    print(f"Loaded {len(df)} hourly observations spanning "
+          f"{(df['ds'].max() - df['ds'].min()).days} days")
+
+    forecast, model = build_storage_forecast(df, forecast_days=90)
+    milestones = extract_capacity_milestones(
+        forecast, CURRENT_CAPACITY_GB, thresholds=[0.70, 0.80, 0.90]
+    )
+
+    print("\n=== Storage Capacity Milestones ===")
+    for threshold, info in milestones.items():
+        if info['within_forecast_window']:
+            print(f"\n{threshold} capacity threshold:")
+            print(f"  Expected breach:    {info['breach_date']}")
+            print(f"  Pessimistic breach: {info['pessimistic_date']}")
+            print(f"  Predicted size:     {info['predicted_size_gb']} GB")
+        else:
+            print(f"\n{threshold}: Not breached within 90-day window")</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Cross-validating Prophet models before deploying them to production is non-negotiable. Use Prophet's built-in cross-validation to verify that your 90% confidence intervals actually contain the true value approximately 90% of the time on held-out data. If they don't, adjust <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">changepoint_prior_scale</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">interval_width</code> accordingly.</p>
+
+<p class="text-gray-300 leading-relaxed">For workloads where you have known future events—a planned data migration, an anticipated traffic spike from a product launch—Prophet's built-in holidays API lets you add these as special regressor events. This is where time-series forecasting starts to look genuinely intelligent rather than mechanical.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">LLM-Assisted Interpretation and Recommendation Generation</h3>
+
+<p class="text-gray-300 leading-relaxed">Forecasting gives you numbers. What DBAs and their stakeholders often need is interpretation: what does this forecast mean, what's driving the trend, what should we do about it, and when does it become urgent? This is where LLMs add disproportionate value in the capacity planning workflow. They bridge the gap between a DataFrame of predicted values and a coherent, actionable narrative that a VP of Engineering can act on.</p>
+
+<p class="text-gray-300 leading-relaxed">The pattern here is structured prompting: you serialize your forecast results, historical metrics, and system context into a structured payload, send it to an LLM via the OpenAI or Anthropic API, and get back an analysis that identifies the key risk factors, proposes mitigation options, and prioritizes actions. The LLM isn't doing the forecasting—the statistical model handles that—but it's doing the interpretation and communication work that would otherwise take a senior DBA 45 minutes per system.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import anthropic
+import json
+from datetime import datetime
+
+
+def generate_capacity_analysis(
+    database_name: str,
+    database_type: str,  # 'postgresql' or 'sqlserver'
+    current_metrics: dict,
+    forecast_milestones: dict,
+    top_growing_tables: list,
+    historical_growth_rate_gb_per_month: float,
+    current_capacity_gb: float,
+    environment: str = "production"
+) -&gt; str:
+    """
+    Use Claude to generate a human-readable capacity planning analysis
+    and recommendation report from structured forecast data.
+    """
+
+    client = anthropic.Anthropic()
+
+    # Serialize forecast context into structured prompt
+    context = {
+        "database_name": database_name,
+        "database_type": database_type,
+        "environment": environment,
+        "report_date": datetime.now().strftime("%Y-%m-%d"),
+        "current_size_gb": current_metrics.get("current_size_gb"),
+        "allocated_capacity_gb": current_capacity_gb,
+        "utilization_pct": round(
+            current_metrics.get("current_size_gb", 0) /
+            current_capacity_gb * 100, 1
+        ),
+        "historical_growth_rate_gb_per_month": historical_growth_rate_gb_per_month,
+        "active_connections_avg_7d": current_metrics.get("avg_connections"),
+        "buffer_hit_ratio": current_metrics.get("buffer_hit_ratio"),
+        "forecast_milestones": forecast_milestones,
+        "top_5_growing_tables": top_growing_tables,
+        "anomalies_detected": current_metrics.get("anomalies", [])
+    }
+
+    system_prompt = """You are a senior database capacity planning specialist 
+with deep expertise in PostgreSQL and SQL Server production environments. 
+You analyze capacity metrics and forecasts to produce actionable planning reports 
+for DBAs and engineering leadership.
+
+Your analysis should be precise, technically credible, and directly actionable.
+Focus on risk quantification, procurement timelines, and specific mitigation steps.
+Do not pad with generic advice. Every recommendation must be grounded in the 
+specific data provided."""
+
+    user_prompt = f"""Analyze the following database capacity forecast data and 
+produce a structured capacity planning report.
+
+## Input Data</code></pre>
+<p class="text-gray-300 leading-relaxed">{json.dumps(context, indent=2, default=str)}</p>
+    </div>
+    <div class="mt-14 bg-violet-950/40 border border-violet-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The AI-Powered DBA</div>
+  </footer>
+</body>
+</html>
