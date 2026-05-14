@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 7: AI-Powered Monitoring — The AI-Powered DBA</title>
+  <meta name="description" content="The AI-Powered DBA Chapter 7: AI-Powered Monitoring. AI and AIOps for PostgreSQL and SQL Server, by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-violet-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html"   class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"       class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Books</a>
+        <a href="index.html"         class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Book 2 Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-violet-400 hover:text-violet-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-violet-900/40 border border-violet-800/40 text-violet-300 text-xs rounded-full font-medium">Chapter 7 of 20</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 7: AI-Powered Monitoring</h2>
+
+<p class="text-gray-300 leading-relaxed">Monitoring a database has always been more art than science. Experienced DBAs develop intuitions over years—learning which metrics matter at 2 AM, recognizing the early warning signs of a lock cascade, knowing that a sudden spike in <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">checkpoint_completion_target</code> violations on a Tuesday morning usually means someone ran a batch job without coordination. But intuitions don't scale, they don't transfer between engineers, and they fail silently when production systems evolve in ways that outpace human pattern recognition. AI-powered monitoring changes this equation by turning those hard-won intuitions into codified, continuously learning detection systems. This chapter builds a complete picture of what AI monitoring looks like in a PostgreSQL and SQL Server environment: from anomaly detection over time-series metrics, to natural language interfaces for alert triage, to production-grade pipelines that route intelligence into the tools your team already uses.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Why Traditional Threshold-Based Monitoring Breaks Down</h3>
+
+<p class="text-gray-300 leading-relaxed">The standard monitoring playbook looks something like this: set a threshold on CPU, I/O wait, query duration, lock waits, or buffer cache hit ratio, and alert when a metric crosses that line. Tools like Nagios, Zabbix, and even the built-in alerting in Azure Monitor or AWS CloudWatch operate on this principle. It works well enough when workloads are stable and predictable. In practice, production databases are neither.</p>
+
+<p class="text-gray-300 leading-relaxed">Consider a reporting database that runs light OLTP loads from 9 AM to 6 PM and then absorbs a nightly ETL that legitimately pegs CPU at 85% for three hours. A static threshold of 80% CPU generates noise every night—engineers start ignoring pages. When they tune the threshold to 90%, they miss a genuine runaway query that sits at 87% for six hours. This is the classic precision-recall tradeoff applied to alerting, and static thresholds simply cannot navigate it without constant manual recalibration.</p>
+
+<p class="text-gray-300 leading-relaxed">The problem compounds across dozens of databases. Each one has its own usage patterns, its own definition of "normal," and its own failure modes. A DBA team managing 40 PostgreSQL instances and 20 SQL Server instances cannot maintain bespoke thresholds for every metric on every server. Alert fatigue is not just an inconvenience—it is a safety hazard. When engineers route critical pages to Slack and then mute the channel because of noise, the next real incident will be discovered by a customer, not an operator.</p>
+
+<p class="text-gray-300 leading-relaxed">The deeper issue is that individual metrics, viewed in isolation, are poor predictors of problems. A query duration spike means nothing on its own. Combined with a simultaneous drop in buffer hit ratio, a rise in disk read latency, and an increase in autovacuum worker count, it tells a coherent story: a table has bloated, autovacuum is struggling to catch up, and the query planner has started choosing sequential scans over index scans. No threshold on any single metric would catch this. A multivariate model can.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Anomaly Detection as a First-Class Monitoring Primitive</h3>
+
+<p class="text-gray-300 leading-relaxed">Anomaly detection treats the question "is this metric value abnormal?" as a statistical problem rather than a configuration problem. Instead of asking an engineer to pick a number, you train a model on historical metric data and let it define the boundary between normal and abnormal based on what it has actually observed.</p>
+
+<p class="text-gray-300 leading-relaxed">The simplest approach that works well for database metrics is seasonal decomposition combined with a standard deviation envelope. Most database metrics exhibit daily and weekly seasonality—query rates peak at 10 AM, drop at lunch, recover in the afternoon, and crater overnight. Decomposing a metric into its trend, seasonal, and residual components lets you test the residual for anomalies without being fooled by expected variation.</p>
+
+<p class="text-gray-300 leading-relaxed">Python's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">statsmodels</code> library makes this straightforward:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import pandas as pd
+import numpy as np
+from statsmodels.tsa.seasonal import STL
+import psycopg2
+
+# Pull 30 days of query latency from pg_stat_statements history
+conn = psycopg2.connect("host=pgprod01 dbname=monitoring user=mon_reader")
+df = pd.read_sql("""
+    SELECT
+        recorded_at,
+        avg_exec_time_ms
+    FROM query_metrics_history
+    WHERE metric_name = 'avg_exec_time'
+      AND recorded_at &gt;= NOW() - INTERVAL '30 days'
+    ORDER BY recorded_at
+""", conn, index_col='recorded_at', parse_dates=['recorded_at'])
+
+df = df.resample('5T').mean().interpolate()
+
+stl = STL(df['avg_exec_time_ms'], period=288)  # 288 * 5min = 24h
+result = stl.fit()
+
+residuals = result.resid
+mean_resid = residuals.mean()
+std_resid = residuals.std()
+
+# Flag points beyond 3 sigma
+df['anomaly'] = np.abs(residuals - mean_resid) &gt; (3 * std_resid)
+anomalies = df[df['anomaly'] == True]
+print(f"Found {len(anomalies)} anomalous intervals in the past 30 days")</code></pre>
+
+<p class="text-gray-300 leading-relaxed">For SQL Server, you'd pull equivalent data from <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_query_stats</code> history or a custom collection table:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Pull recent average query duration snapshots for anomaly detection pipeline
+SELECT
+    snapshot_time,
+    AVG(total_elapsed_time / execution_count) AS avg_elapsed_us,
+    COUNT(*) AS query_count
+FROM dbo.query_stats_history
+WHERE snapshot_time &gt;= DATEADD(DAY, -30, GETUTCDATE())
+GROUP BY snapshot_time
+ORDER BY snapshot_time;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Pull equivalent data from a pg_stat_statements snapshot table
+SELECT
+    recorded_at,
+    AVG(mean_exec_time) AS avg_exec_time_ms,
+    SUM(calls) AS total_calls
+FROM pg_stat_statements_history
+WHERE recorded_at &gt;= NOW() - INTERVAL '30 days'
+GROUP BY recorded_at
+ORDER BY recorded_at;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">STL works well for univariate metrics, but database health is inherently multivariate. As your monitoring matures, you will want models that can detect anomalies across correlated metrics simultaneously. Facebook's Prophet handles multivariate seasonality well and is widely used in infrastructure monitoring. For more complex correlation patterns, isolation forests and autoencoders are worth exploring.</p>
+
+<p class="text-gray-300 leading-relaxed">An isolation forest implementation for multivariate database metrics:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
+import pandas as pd
+
+# Load a multivariate feature set from your monitoring database
+features = pd.read_sql("""
+    SELECT
+        snapshot_time,
+        cpu_pct,
+        active_connections,
+        avg_query_ms,
+        buffer_hit_ratio,
+        lock_wait_count,
+        checkpoint_duration_s,
+        autovacuum_workers
+    FROM db_health_snapshots
+    WHERE snapshot_time &gt;= NOW() - INTERVAL '14 days'
+    ORDER BY snapshot_time
+""", conn)
+
+feature_cols = [
+    'cpu_pct', 'active_connections', 'avg_query_ms',
+    'buffer_hit_ratio', 'lock_wait_count',
+    'checkpoint_duration_s', 'autovacuum_workers'
+]
+
+scaler = StandardScaler()
+X = scaler.fit_transform(features[feature_cols].fillna(method='ffill'))
+
+clf = IsolationForest(
+    n_estimators=200,
+    contamination=0.02,  # Expect ~2% anomalous windows
+    random_state=42
+)
+clf.fit(X)
+
+features['anomaly_score'] = clf.decision_function(X)
+features['is_anomaly'] = clf.predict(X) == -1
+
+# Export anomaly scores back to PostgreSQL for Grafana visualization
+from sqlalchemy import create_engine
+engine = create_engine("postgresql://mon_writer:pw@pgprod01/monitoring")
+features[['snapshot_time', 'anomaly_score', 'is_anomaly']].to_sql(
+    'anomaly_scores', engine, if_exists='append', index=False
+)</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The contamination parameter deserves careful thought. Setting it too low means you miss real anomalies; too high and alert fatigue returns. Start at 1-2% and tune based on your false positive rate over two to four weeks of production data. Track every alert: whether it was actionable, what the root cause was, and how the anomaly score compared to historical baselines. This feedback loop is what separates a production monitoring system from a science experiment.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Building a Metrics Pipeline That Feeds AI Models</h3>
+
+<p class="text-gray-300 leading-relaxed">Anomaly detection is only as good as the data it consumes. Before any model can reliably flag unusual behavior, you need a metrics collection pipeline that is consistent, high-resolution, and queryable at arbitrary time ranges. The typical production stack combines Prometheus for scraping, a time-series database for storage, and Grafana for visualization—with an AI layer sitting alongside this stack and consuming the same data.</p>
+
+<p class="text-gray-300 leading-relaxed">For PostgreSQL, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">postgres_exporter</code> is the standard Prometheus exporter. Configure it to collect from <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_bgwriter</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_database</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_user_tables</code>, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_statements</code>, and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_locks</code>. For SQL Server, <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sql_exporter</code> or the official Microsoft <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sql-server-prometheus-exporter</code> covers DMV-level metrics. A representative <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">postgres_exporter</code> query configuration for lock monitoring:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code># queries.yaml for postgres_exporter
+pg_locks_detail:
+  query: |
+    SELECT
+      mode,
+      relation::regclass::text AS relation_name,
+      COUNT(*) AS lock_count
+    FROM pg_locks
+    WHERE granted = false
+    GROUP BY mode, relation
+  metrics:
+    - mode:
+        usage: LABEL
+        description: Lock mode
+    - relation_name:
+        usage: LABEL
+        description: Relation being waited on
+    - lock_count:
+        usage: GAUGE
+        description: Number of ungranted locks</code></pre>
+
+<p class="text-gray-300 leading-relaxed">A common mistake is collecting metrics at too coarse a resolution. Five-minute intervals are fine for capacity planning but miss the 30-second lock cascade that took your application down. For health-sensitive metrics—active connections, wait events, lock waits, replication lag—collect at 15-second intervals. For heavier queries against <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_statements</code> or SQL Server DMVs, one-minute intervals are reasonable.</p>
+
+<p class="text-gray-300 leading-relaxed">Store raw metrics in Prometheus (with a long retention VictoriaMetrics backend if you need years of history) and mirror them into a relational or columnar store that your AI pipeline can query with SQL. TimescaleDB on PostgreSQL is an excellent choice for this—it gives you SQL semantics over time-series data, which makes writing the feature engineering queries that feed your models far more natural than Prometheus's PromQL.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL (TimescaleDB feature store):</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Create a continuous aggregate for 5-minute feature windows
+CREATE MATERIALIZED VIEW db_health_5min
+WITH (timescaledb.continuous) AS
+SELECT
+    time_bucket('5 minutes', collected_at) AS bucket,
+    instance_id,
+    AVG(cpu_pct)                  AS avg_cpu,
+    MAX(active_connections)        AS max_connections,
+    AVG(avg_query_ms)              AS avg_query_ms,
+    AVG(buffer_hit_ratio)          AS avg_buffer_hit_ratio,
+    SUM(lock_wait_count)           AS total_lock_waits,
+    MAX(replication_lag_bytes)     AS max_replication_lag
+FROM raw_db_metrics
+GROUP BY bucket, instance_id
+WITH NO DATA;
+
+SELECT add_continuous_aggregate_policy('db_health_5min',
+    start_offset =&gt; INTERVAL '1 hour',
+    end_offset   =&gt; INTERVAL '5 minutes',
+    schedule_interval =&gt; INTERVAL '5 minutes');</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Equivalent feature aggregation in SQL Server using a scheduled job
+INSERT INTO dbo.db_health_5min (
+    bucket,
+    instance_id,
+    avg_cpu,
+    max_connections,
+    avg_query_ms,
+    avg_buffer_hit_ratio,
+    total_lock_waits,
+    max_replication_lag_kb
+)
+SELECT
+    DATEADD(MINUTE, DATEDIFF(MINUTE, 0, collected_at) / 5 * 5, 0) AS bucket,
+    instance_id,
+    AVG(cpu_pct),
+    MAX(active_connections),
+    AVG(avg_query_ms),
+    AVG(buffer_hit_ratio),
+    SUM(lock_wait_count),
+    MAX(replication_lag_kb)
+FROM dbo.raw_db_metrics
+WHERE collected_at &gt;= DATEADD(MINUTE, -10, GETUTCDATE())
+GROUP BY
+    DATEADD(MINUTE, DATEDIFF(MINUTE, 0, collected_at) / 5 * 5, 0),
+    instance_id;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">With a continuous feature store in place, your anomaly detection models can be retrained nightly on fresh data, and your alert generation pipeline can query recent windows without hitting production DMVs under load.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Using LLMs to Interpret Alerts and Accelerate Triage</h3>
+
+<p class="text-gray-300 leading-relaxed">Detecting an anomaly is only the first step. The harder problem is telling your on-call engineer not just that something is wrong, but what it likely means and what they should do first. This is where large language models earn their place in a monitoring stack.</p>
+
+<p class="text-gray-300 leading-relaxed">The pattern is straightforward: when an anomaly is detected, collect the relevant metric context—the anomaly score, which features contributed most, recent metric values, active queries, lock holders, replication status—and send it to a language model with a structured prompt asking for a diagnosis and recommended investigation steps. The response becomes the body of the alert that pages the engineer.</p>
+
+<p class="text-gray-300 leading-relaxed">Here is a production-ready implementation using the OpenAI API:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import openai
+import json
+import psycopg2
+from datetime import datetime, timedelta
+
+def collect_incident_context(instance_id: str, anomaly_time: datetime) -&gt; dict:
+    conn = psycopg2.connect(f"host={instance_id} dbname=postgres user=mon_reader")
+    cur = conn.cursor()
+
+    # Top wait events at anomaly time
+    cur.execute("""
+        SELECT wait_event_type, wait_event, COUNT(*) as session_count
+        FROM pg_stat_activity
+        WHERE state != 'idle'
+        GROUP BY wait_event_type, wait_event
+        ORDER BY session_count DESC
+        LIMIT 10
+    """)
+    wait_events = cur.fetchall()
+
+    # Longest running queries
+    cur.execute("""
+        SELECT pid, usename, application_name, state,
+               EXTRACT(EPOCH FROM (NOW() - query_start))::int AS duration_s,
+               LEFT(query, 200) AS query_preview
+        FROM pg_stat_activity
+        WHERE state != 'idle'
+          AND query_start IS NOT NULL
+        ORDER BY duration_s DESC
+        LIMIT 5
+    """)
+    long_queries = cur.fetchall()
+
+    # Lock waits
+    cur.execute("""
+        SELECT blocked.pid AS blocked_pid,
+               blocking.pid AS blocking_pid,
+               blocked.query AS blocked_query,
+               blocking.query AS blocking_query
+        FROM pg_stat_activity blocked
+        JOIN pg_stat_activity blocking
+          ON blocking.pid = ANY(pg_blocking_pids(blocked.pid))
+        LIMIT 5
+    """)
+    lock_waits = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return {
+        "instance": instance_id,
+        "anomaly_time": anomaly_time.isoformat(),
+        "wait_events": wait_events,
+        "long_queries": long_queries,
+        "lock_waits": lock_waits
+    }
+
+
+def generate_alert_narrative(context: dict, anomaly_score: float,
+                              top_features: dict) -&gt; str:
+    client = openai.OpenAI()
+
+    system_prompt = """You are a senior PostgreSQL DBA analyzing a database health anomaly.
+Your job is to interpret the provided metric context and generate a clear, actionable alert 
+narrative for an on-call engineer. Be specific about likely root causes. Do not speculate 
+beyond what the data supports. Format your response as:
+
+LIKELY CAUSE: &lt;one sentence&gt;
+SEVERITY ASSESSMENT: &lt;High/Medium/Low with brief justification&gt;
+IMMEDIATE ACTIONS: &lt;numbered list of 3-5 concrete steps&gt;
+WATCH FOR: &lt;metrics or conditions that would indicate escalation&gt;"""
+
+    user_prompt = f"""
+Anomaly detected on PostgreSQL instance: {context['instance']}
+Anomaly score: {anomaly_score:.3f} (higher = more anomalous)
+Detected at: {context['anomaly_time']}
+
+Top contributing metrics:
+{json.dumps(top_features, indent=2)}
+
+Current wait events:
+{json.dumps(context['wait_events'], indent=2)}
+
+Long-running queries (top 5):
+{json.dumps(context['long_queries'], indent=2)}
+
+Active lock waits:
+{json.dumps(context['lock_waits'], indent=2)}
+
+Analyze this situation and provide your assessment.
+"""
+
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        temperature=0.2,
+        max_tokens=600
+    )
+
+    return response.choices[0].message.content
+
+
+# Example usage in your alert pipeline
+def process_anomaly_alert(instance_id: str, anomaly_score: float,
+                           top_features: dict):
+    anomaly_time = datetime.utcnow()
+    context = collect_incident_context(instance_id, anomaly_time)
+    narrative = generate_alert_narrative(context, anomaly_score, top_features)
+
+    # Send to PagerDuty, Slack, or your incident management system
+    send_alert(
+        title=f"Database anomaly detected: {instance_id}",
+        body=narrative,
+        severity="high" if anomaly_score &gt; 0.8 else "medium",
+        metadata=context
+    )</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The temperature setting of 0.2 is intentional. You want a consistent, deterministic diagnostic voice, not creative variation in alert bodies. On-call engineers reading alerts at 3 AM should find the same clear format every time.</p>
+
+<p class="text-gray-300 leading-relaxed">For teams using Anthropic's Claude API, the same pattern applies with a different client library. Claude's longer context window is particularly useful when you want to include more historical metric data or the full text of long-running queries:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import anthropic
+
+def generate_alert_narrative_claude(context: dict, anomaly_score: float,
+                                    top_features: dict,
+                                    historical_context: str) -&gt; str:
+    client = anthropic.Anthropic()
+
+    message = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=1024,
+        system="""You are a senior database reliability engineer analyzing a production 
+database anomaly. Provide a concise, actionable diagnosis. Be direct and specific. 
+Format: LIKELY CAUSE / SEVERITY / IMMEDIATE ACTIONS / ESCALATION TRIGGERS""",
+        messages=[{
+            "role": "user",
+            "content": f"""
+Database: {context['instance']} (PostgreSQL)
+Anomaly Score: {anomaly_score:.3f}
+Timestamp: {context['anomaly_time']}
+
+Anomalous metrics:
+{json.dumps(top_features, indent=2)}
+
+Current system state:
+{json.dumps(context, indent=2)}
+
+Historical pattern for context:
+{historical_context}
+
+Provide your diagnosis.
+"""
+        }]
+    )
+
+    return message.content[0].text</code></pre>
+
+<p class="text-gray-300 leading-relaxed">One important guardrail: do not let the LLM make autonomous changes to the database based on its diagnosis. The LLM's role in this pipeline is to generate human-readable intelligence, not to execute remediation. Autonomous remediation is a separate discipline (covered in Chapter 12) with its own approval gates and circuit breakers. In monitoring, the LLM is an advisor, not an actor.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Integrating AI Monitoring Into Grafana and Prometheus</h3>
+
+<p class="text-gray-300 leading-relaxed">AI-generated anomaly scores and narratives are only useful if they appear where engineers already look. The goal is to enrich your existing Grafana dashboards rather than build parallel tooling that no one will check. The integration points are simpler than they might appear.</p>
+
+<p class="text-gray-300 leading-relaxed">Anomaly scores generated by your Python pipeline can be written back to Prometheus via the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">prometheus_client</code> library's push gateway, or persisted in TimescaleDB and exposed through a custom Prometheus exporter. Once the score is a Prometheus metric, it appears in Grafana like any other time series and can trigger standard alerting rules.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+
+def publish_anomaly_scores(scores: pd.DataFrame, pushgateway_url: str):
+    registry = CollectorRegistry()
+    anomaly_gauge = Gauge(
+        'db_anomaly_score',
+        'Isolation forest anomaly score (lower = more anomalous)',
+        ['instance_id'],
+        registry=registry
+    )
+    anomaly_flag = Gauge(
+        'db_is_anomaly',
+        'Binary anomaly flag (1 = anomalous)',
+        ['instance_id'],
+        registry=registry
+    )
+
+    for _, row in scores.iterrows():
+        anomaly_gauge.labels(instance_id=row['instance_id']).set(
+            row['anomaly_score']
+        )
+        anomaly_flag.labels(instance_id=row['instance_id']).set(
+            1 if row['is_anomaly'] else 0
+        )
+
+    push_to_gateway(
+        pushgateway_url,
+        job='db_anomaly_detector',
+        registry=registry
+    )</code></pre>
+
+<p class="text-gray-300 leading-relaxed">In Grafana, create a Prometheus alert rule that fires when <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">db_is_anomaly</code> equals 1 for a given instance. Set the alert to include the LLM-generated narrative as an annotation—Grafana supports dynamic annotation text via the Alerting API. Engineers clicking through from a PagerDuty page will land on a Grafana dashboard that shows the anomaly highlighted on the time series, with the AI diagnosis visible in the annotation panel.</p>
+
+<p class="text-gray-300 leading-relaxed">The Grafana dashboard structure that works well for AI-augmented monitoring:</p>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Top row**: `db_anomaly_score` as a time series per instance, with threshold lines at your alert levels. Anomalous regions show as highlighted bands.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Second row**: The top contributing features from the isolation forest, displayed as individual panels with the anomalous period highlighted using Grafana's time region feature.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Third row**: Standard operational metrics—connections, query duration percentiles, lock waits, replication lag—for the drill-down that engineers will do after reading the AI narrative.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> **Bottom row**: A text panel that queries your narrative storage table and displays the most recent LLM assessment for the selected instance.</li>
+
+<p class="text-gray-300 leading-relaxed">For the narrative storage and retrieval, a simple PostgreSQL table works well:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>CREATE TABLE monitoring.ai_alert_narratives (
+    id          BIGSERIAL PRIMARY KEY,
+    instance_id TEXT NOT NULL,
+    detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    anomaly_score FLOAT NOT NULL,
+    narrative   TEXT NOT NULL,
+    top_features JSONB,
+    acknowledged_at TIMESTAMPTZ,
+    acknowledged_by TEXT,
+    root_cause_confirmed TEXT
+);
+
+CREATE INDEX ON monitoring.ai_alert_narratives (instance_id, detected_at DESC);
+
+-- View for Grafana: most recent unacknowledged narrative per instance
+CREATE VIEW monitoring.current_ai_alerts AS
+SELECT DISTINCT ON (instance_id)
+    instance_id,
+    detected_at,
+    anomaly_score,
+    narrative,
+    top_features
+FROM monitoring.ai_alert_narratives
+WHERE acknowledged_at IS NULL
+ORDER BY instance_id, detected_at DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+    </div>
+    <div class="mt-14 bg-violet-950/40 border border-violet-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The AI-Powered DBA</div>
+  </footer>
+</body>
+</html>
