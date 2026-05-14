@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 18: Building ML Models for DBA Work — The AI-Powered DBA</title>
+  <meta name="description" content="The AI-Powered DBA Chapter 18: Building ML Models for DBA Work. AI and AIOps for PostgreSQL and SQL Server, by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-violet-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html"   class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"       class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Books</a>
+        <a href="index.html"         class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Book 2 Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-violet-400 hover:text-violet-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-violet-900/40 border border-violet-800/40 text-violet-300 text-xs rounded-full font-medium">Chapter 18 of 20</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 18: Building ML Models for DBA Work</h2>
+
+<p class="text-gray-300 leading-relaxed">Most DBAs have spent years building intuition — the gut feeling that a query plan looks wrong, that a server is trending toward trouble, that a particular workload pattern signals an impending issue. That intuition is real and valuable, but it doesn't scale across dozens of databases, hundreds of schemas, and terabytes of telemetry. Machine learning is the mechanism for encoding that intuition into systems that can operate continuously at scale. This chapter moves beyond using AI tools that others have built and into the territory of building your own: training models on your own database telemetry, deploying them as scoring services, and integrating predictions directly into your operational workflows. The goal is not to turn DBAs into data scientists but to give experienced DBAs enough ML fluency to build targeted, production-grade models that solve the problems they know best.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Why Custom Models Beat Generic AI for Database Operations</h3>
+
+<p class="text-gray-300 leading-relaxed">There is a temptation to reach for a general-purpose LLM every time an operations problem feels complex. LLMs are genuinely powerful for query rewriting, documentation generation, and root cause reasoning — tasks covered elsewhere in this book. But for quantitative prediction problems specific to your environment, custom ML models built on your own telemetry consistently outperform generic AI approaches.</p>
+
+<p class="text-gray-300 leading-relaxed">The reason is domain specificity. A general model trained on public data knows nothing about the specific patterns of your OLTP cluster on Monday mornings, the quirks of your ETL pipeline that runs at 2 AM, or the relationship between your application's connection pool behavior and your PostgreSQL autovacuum contention. These are patterns that live entirely within your telemetry — and they are exactly the patterns a custom model learns.</p>
+
+<p class="text-gray-300 leading-relaxed">Consider the three problem categories where custom ML models provide the highest operational return for DBAs:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Anomaly detection on performance metrics.</strong> Time-series models trained on your wait statistics, lock contention, buffer cache hit rates, and query latency distributions can flag genuine anomalies within seconds — and do so with far fewer false positives than threshold-based alerting. They understand that your batch jobs cause expected metric spikes and do not page you at 2 AM for them.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Query classification and regression prediction.</strong> Trained on historical execution plans, query text features, and actual runtime outcomes, regression models can predict execution time for incoming queries before they run. Classification models can bucket queries into risk tiers — fast, slow, potentially catastrophic — enabling query admission control or pre-execution warnings.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Capacity and growth forecasting.</strong> Statistical and ML models trained on tablespace growth, connection counts, and transaction rates produce more accurate forecasts than static trending because they can capture seasonality, correlations between metrics, and inflection points.</p>
+
+<p class="text-gray-300 leading-relaxed">Building these models requires three things: a reliable way to collect your telemetry, a training pipeline that fits the operational context, and a deployment model that integrates with how you already manage databases. The rest of this chapter builds all three.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Collecting and Engineering Features from Database Telemetry</h3>
+
+<p class="text-gray-300 leading-relaxed">Every ML model is only as good as its features. For database operations, features come from system catalogs, wait event tables, operating system metrics, and query execution metadata. The art is not just collecting these values but transforming them into signals that carry predictive information.</p>
+
+<p class="text-gray-300 leading-relaxed">Start by establishing a telemetry collection layer. The goal is a time-series store with consistent granularity — typically 15-second or 60-second intervals for operational metrics — that you can query for model training and inference.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Create a telemetry snapshot table for training data collection
+CREATE TABLE dba_ml.pg_metric_snapshots (
+    snapshot_id     BIGSERIAL PRIMARY KEY,
+    captured_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    datname         TEXT,
+    numbackends     INTEGER,
+    xact_commit     BIGINT,
+    xact_rollback   BIGINT,
+    blks_hit        BIGINT,
+    blks_read       BIGINT,
+    tup_inserted    BIGINT,
+    tup_updated     BIGINT,
+    tup_deleted     BIGINT,
+    deadlocks       BIGINT,
+    temp_files      BIGINT,
+    temp_bytes      BIGINT,
+    -- Derived features computed at capture time
+    cache_hit_ratio NUMERIC(6,4) GENERATED ALWAYS AS (
+        CASE WHEN blks_hit + blks_read &gt; 0
+             THEN blks_hit::NUMERIC / (blks_hit + blks_read)
+             ELSE NULL END
+    ) STORED,
+    rollback_ratio  NUMERIC(6,4) GENERATED ALWAYS AS (
+        CASE WHEN xact_commit + xact_rollback &gt; 0
+             THEN xact_rollback::NUMERIC / (xact_commit + xact_rollback)
+             ELSE NULL END
+    ) STORED
+);
+
+-- Collect wait event distribution for anomaly features
+CREATE TABLE dba_ml.pg_wait_snapshots (
+    snapshot_id BIGINT REFERENCES dba_ml.pg_metric_snapshots(snapshot_id),
+    wait_event_type TEXT,
+    wait_event      TEXT,
+    backend_count   INTEGER
+);</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Equivalent telemetry collection for SQL Server
+CREATE TABLE dba_ml.dm_metric_snapshots (
+    snapshot_id     BIGINT IDENTITY(1,1) PRIMARY KEY,
+    captured_at     DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    database_name   NVARCHAR(128),
+    -- From sys.dm_os_performance_counters
+    batch_requests_per_sec  FLOAT,
+    sql_compilations_per_sec FLOAT,
+    page_reads_per_sec      FLOAT,
+    page_writes_per_sec     FLOAT,
+    buffer_cache_hit_ratio  FLOAT,
+    -- From sys.dm_os_wait_stats (delta since last snapshot)
+    lock_waits_ms           BIGINT,
+    log_write_waits_ms      BIGINT,
+    network_io_waits_ms     BIGINT,
+    memory_grant_queue_waits BIGINT,
+    -- From sys.dm_exec_query_stats aggregation
+    avg_worker_time_ms      FLOAT,
+    avg_logical_reads       FLOAT,
+    total_slow_queries      INTEGER   -- execution_count where avg &gt; threshold
+);</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Raw metric values have limited predictive power on their own. Feature engineering — computing derived signals that encode the *rate of change*, *relative deviation*, and *cross-metric relationships* — is where most of the model accuracy comes from.</p>
+
+<p class="text-gray-300 leading-relaxed">The following Python snippet runs as a periodic job (cron or Airflow task) to compute enriched features from the raw snapshot tables and write them to a feature store table used for training:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import pandas as pd
+import numpy as np
+import psycopg2
+from sqlalchemy import create_engine, text
+from datetime import datetime, timedelta
+
+class DBATelemetryFeatureEngineer:
+    """
+    Transforms raw database metric snapshots into ML-ready feature vectors.
+    Designed to run every 5 minutes, appending to a feature store table.
+    """
+
+    def __init__(self, pg_conn_string: str, lookback_minutes: int = 60):
+        self.engine = create_engine(pg_conn_string)
+        self.lookback_minutes = lookback_minutes
+
+    def load_recent_snapshots(self, datname: str) -&gt; pd.DataFrame:
+        cutoff = datetime.utcnow() - timedelta(minutes=self.lookback_minutes)
+        query = """
+            SELECT captured_at, numbackends, xact_commit, xact_rollback,
+                   blks_hit, blks_read, tup_inserted, tup_updated, tup_deleted,
+                   deadlocks, temp_files, temp_bytes,
+                   cache_hit_ratio, rollback_ratio
+            FROM dba_ml.pg_metric_snapshots
+            WHERE datname = %(datname)s
+              AND captured_at &gt;= %(cutoff)s
+            ORDER BY captured_at
+        """
+        return pd.read_sql(query, self.engine,
+                           params={"datname": datname, "cutoff": cutoff},
+                           parse_dates=["captured_at"])
+
+    def compute_features(self, df: pd.DataFrame) -&gt; pd.DataFrame:
+        """
+        Derive predictive features from raw time-series snapshots.
+        """
+        df = df.sort_values("captured_at").copy()
+
+        # Delta features — rate of change between consecutive snapshots
+        for col in ["xact_commit", "xact_rollback", "blks_read", "tup_updated"]:
+            df[f"{col}_delta"] = df[col].diff().fillna(0)
+
+        # Rolling statistics — mean and std over the last N observations
+        window = 12  # 12 x 5-minute intervals = 1 hour
+        for col in ["numbackends", "cache_hit_ratio", "rollback_ratio", "temp_files"]:
+            df[f"{col}_rolling_mean"] = df[col].rolling(window, min_periods=3).mean()
+            df[f"{col}_rolling_std"]  = df[col].rolling(window, min_periods=3).std()
+
+        # Z-score deviation: how many std deviations from rolling mean
+        for col in ["numbackends", "cache_hit_ratio"]:
+            mean_col = f"{col}_rolling_mean"
+            std_col  = f"{col}_rolling_std"
+            df[f"{col}_zscore"] = np.where(
+                df[std_col] &gt; 0,
+                (df[col] - df[mean_col]) / df[std_col],
+                0.0
+            )
+
+        # Cross-metric interaction features
+        df["write_amplification"] = np.where(
+            df["blks_read_delta"] &gt; 0,
+            df["tup_updated_delta"] / (df["blks_read_delta"] + 1),
+            0.0
+        )
+        df["temp_pressure"] = df["temp_bytes"] / (1024**3)  # GB of temp usage
+
+        # Time-of-day cyclical encoding (captures daily patterns)
+        df["hour_sin"] = np.sin(2 * np.pi * df["captured_at"].dt.hour / 24)
+        df["hour_cos"] = np.cos(2 * np.pi * df["captured_at"].dt.hour / 24)
+        df["dow_sin"]  = np.sin(2 * np.pi * df["captured_at"].dt.dayofweek / 7)
+        df["dow_cos"]  = np.cos(2 * np.pi * df["captured_at"].dt.dayofweek / 7)
+
+        return df.dropna(subset=["numbackends_rolling_mean"])
+
+    def write_to_feature_store(self, features_df: pd.DataFrame, datname: str):
+        features_df["datname"] = datname
+        features_df.to_sql(
+            "pg_feature_store",
+            self.engine,
+            schema="dba_ml",
+            if_exists="append",
+            index=False,
+            method="multi"
+        )</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The cyclical time encoding deserves emphasis: wrapping hour-of-day as sine and cosine components ensures that the model understands that hour 23 and hour 0 are adjacent, not opposite ends of the scale. This alone can meaningfully improve anomaly detection accuracy for workloads with strong daily patterns.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Training Anomaly Detection and Forecasting Models</h3>
+
+<p class="text-gray-300 leading-relaxed">With a feature store accumulating daily, you have the raw material for training. The first model most DBA shops should build is an anomaly detector for performance degradation events. The second, once enough labeled data accumulates, is a forecasting model for capacity metrics.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Isolation Forest for Unsupervised Anomaly Detection</strong></p>
+
+<p class="text-gray-300 leading-relaxed">Isolation Forest is the practical first choice for DBA anomaly detection because it requires no labeled data — you do not need to have tagged every past incident as "anomalous" to train it. It works by randomly partitioning the feature space and observing that genuinely anomalous points (unusual metric combinations) are isolated with far fewer partitions than normal points.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import pandas as pd
+import numpy as np
+import joblib
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
+from sqlalchemy import create_engine
+import mlflow
+import mlflow.sklearn
+
+FEATURE_COLUMNS = [
+    "numbackends", "cache_hit_ratio", "rollback_ratio",
+    "temp_pressure", "write_amplification",
+    "numbackends_zscore", "cache_hit_ratio_zscore",
+    "xact_commit_delta", "blks_read_delta",
+    "hour_sin", "hour_cos", "dow_sin", "dow_cos"
+]
+
+def train_anomaly_detector(pg_conn_string: str, datname: str,
+                            training_days: int = 30):
+    engine = create_engine(pg_conn_string)
+
+    # Load training data — use a quiet period (no known incidents) if possible
+    df = pd.read_sql("""
+        SELECT {cols}
+        FROM dba_ml.pg_feature_store
+        WHERE datname = %(datname)s
+          AND captured_at &gt;= NOW() - INTERVAL '%(days)s days'
+          -- Exclude known incident windows if you have them
+          AND NOT (captured_at BETWEEN '2024-11-15 02:00' AND '2024-11-15 04:30')
+        ORDER BY captured_at
+    """.format(cols=", ".join(FEATURE_COLUMNS)),
+        engine, params={"datname": datname, "days": training_days}
+    )
+
+    X = df[FEATURE_COLUMNS].fillna(0).values
+
+    pipeline = Pipeline([
+        ("scaler", StandardScaler()),
+        ("model", IsolationForest(
+            n_estimators=200,
+            max_samples="auto",
+            contamination=0.03,   # Expect ~3% of samples to be anomalous
+            random_state=42,
+            n_jobs=-1
+        ))
+    ])
+
+    with mlflow.start_run(run_name=f"anomaly_detector_{datname}"):
+        pipeline.fit(X)
+
+        # Score training data to establish anomaly threshold
+        scores = pipeline.named_steps["model"].score_samples(
+            pipeline.named_steps["scaler"].transform(X)
+        )
+        threshold = np.percentile(scores, 3)  # Bottom 3% = anomaly boundary
+
+        mlflow.log_param("datname", datname)
+        mlflow.log_param("contamination", 0.03)
+        mlflow.log_param("training_days", training_days)
+        mlflow.log_metric("anomaly_threshold", threshold)
+        mlflow.log_metric("training_samples", len(X))
+        mlflow.sklearn.log_model(pipeline, "isolation_forest_pipeline")
+
+        model_path = f"/opt/dba_models/{datname}_anomaly_detector.pkl"
+        joblib.dump({"pipeline": pipeline, "threshold": threshold,
+                     "feature_columns": FEATURE_COLUMNS}, model_path)
+
+    print(f"Model trained on {len(X)} samples. Threshold: {threshold:.4f}")
+    return pipeline, threshold</code></pre>
+
+<p class="text-gray-300 leading-relaxed">MLflow tracking is non-negotiable in production. It ensures every model version is reproducible, that you can roll back to a prior version if a retrain produces worse results, and that you have an audit trail when the model flags an incident.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Prophet for Capacity Forecasting</strong></p>
+
+<p class="text-gray-300 leading-relaxed">For tablespace growth and connection count forecasting, Meta's Prophet library is an excellent fit. It handles daily and weekly seasonality natively, tolerates missing data gracefully, and produces confidence intervals that translate directly into actionable capacity planning thresholds.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Extract tablespace growth history for forecasting
+SELECT
+    DATE_TRUNC('day', captured_at)::DATE AS ds,
+    MAX(pg_database_size(datname))       AS y
+FROM dba_ml.pg_metric_snapshots
+WHERE datname = 'production_db'
+GROUP BY 1
+ORDER BY 1;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Equivalent for SQL Server database size history
+SELECT
+    CAST(captured_at AS DATE)             AS ds,
+    MAX(size_mb * 1024 * 1024)            AS y
+FROM dba_ml.dm_db_size_history
+WHERE database_name = 'ProductionDB'
+GROUP BY CAST(captured_at AS DATE)
+ORDER BY ds;</code></pre>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>from prophet import Prophet
+import pandas as pd
+from sqlalchemy import create_engine
+import json
+
+def train_capacity_forecast_model(conn_string: str, datname: str,
+                                   horizon_days: int = 60):
+    engine = create_engine(conn_string)
+
+    df = pd.read_sql("""
+        SELECT DATE_TRUNC('day', captured_at)::DATE AS ds,
+               MAX(pg_database_size(%(datname)s))   AS y
+        FROM dba_ml.pg_metric_snapshots
+        WHERE datname = %(datname)s
+        GROUP BY 1 ORDER BY 1
+    """, engine, params={"datname": datname}, parse_dates=["ds"])
+
+    df["ds"] = pd.to_datetime(df["ds"])
+    df["y"]  = df["y"].astype(float)
+
+    model = Prophet(
+        growth="linear",
+        yearly_seasonality=True,
+        weekly_seasonality=True,
+        daily_seasonality=False,
+        changepoint_prior_scale=0.05,    # Conservative — don't overfit to spikes
+        seasonality_prior_scale=10.0,
+        interval_width=0.95
+    )
+
+    # Add known events that affect growth (quarterly data loads, etc.)
+    model.add_country_holidays(country_name="US")
+
+    model.fit(df)
+
+    future = model.make_future_dataframe(periods=horizon_days)
+    forecast = model.predict(future)
+
+    # Extract the actionable forecast window
+    future_forecast = forecast[forecast["ds"] &gt; df["ds"].max()][
+        ["ds", "yhat", "yhat_lower", "yhat_upper"]
+    ]
+
+    # Identify when upper-bound projection exceeds 80% of allocated storage
+    allocated_bytes = 500 * (1024**3)  # 500 GB example
+    future_forecast["pct_full_upper"] = future_forecast["yhat_upper"] / allocated_bytes
+
+    breach_date = future_forecast[
+        future_forecast["pct_full_upper"] &gt;= 0.80
+    ]["ds"].min()
+
+    print(f"Projected 80% storage utilization (upper bound): {breach_date}")
+    return model, future_forecast</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">changepoint_prior_scale=0.05</code> setting is deliberately conservative for database capacity forecasting. You want the model to recognize genuine trend changes (a new feature launch that doubles write volume) without being thrown off by the normal variance of daily backup and VACUUM activity.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Deploying Models as Scoring Services</h3>
+
+<p class="text-gray-300 leading-relaxed">Training a model on a workstation is the easy part. The hard part — and the part most ML-adjacent database projects fail at — is deploying models so they can score incoming metrics in real time, integrate with your alerting stack, and update themselves as conditions change.</p>
+
+<p class="text-gray-300 leading-relaxed">The architecture that works in practice for DBA operations is a lightweight FastAPI scoring service running on your monitoring infrastructure, receiving metric snapshots from your collection agents and returning predictions that Prometheus or your alerting system can consume.</p>
+
+    </div>
+    <div class="mt-14 bg-violet-950/40 border border-violet-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The AI-Powered DBA</div>
+  </footer>
+</body>
+</html>
