@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 15: AI Features in Azure SQL — The AI-Powered DBA</title>
+  <meta name="description" content="The AI-Powered DBA Chapter 15: AI Features in Azure SQL. AI and AIOps for PostgreSQL and SQL Server, by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-violet-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html"   class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"       class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Books</a>
+        <a href="index.html"         class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Book 2 Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-violet-400 hover:text-violet-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-violet-900/40 border border-violet-800/40 text-violet-300 text-xs rounded-full font-medium">Chapter 15 of 20</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 15: AI Features in Azure SQL</h2>
+
+<p class="text-gray-300 leading-relaxed">Azure SQL is no longer just a managed relational database — it has become a platform where Microsoft has embedded machine learning, natural language processing, and intelligent automation directly into the engine, the cloud fabric, and the surrounding toolchain. For DBAs who have spent years tuning queries by hand, writing maintenance scripts from scratch, and building monitoring dashboards from raw DMV data, this shift is worth paying close attention to. Azure SQL's AI features are not marketing abstractions. They touch performance tuning, threat detection, schema recommendations, vector search, and copilot-assisted query authoring in ways that change the operational surface area of daily DBA work. This chapter maps those features precisely — what they do, how they work under the hood, and how to integrate them into production workflows alongside your own AI tooling.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Intelligent Query Processing and Automatic Tuning: How the Engine Learns</h3>
+
+<p class="text-gray-300 leading-relaxed">Before reaching for an external AI API, it is worth understanding what Azure SQL already does automatically. Intelligent Query Processing (IQP) is a family of query optimizer features that use runtime feedback to improve execution plans across repeated executions. This is the database engine applying learned behavior — a form of closed-loop machine learning baked into the query processor itself.</p>
+
+<p class="text-gray-300 leading-relaxed">The most operationally significant IQP features are Memory Grant Feedback, Cardinality Estimation Feedback, and Degree of Parallelism Feedback. Memory Grant Feedback observes that an initial memory grant caused a spill to tempdb or left large unused memory, then adjusts the grant for the next execution. CE Feedback compares estimated versus actual row counts and adjusts the cardinality model used for subsequent plan compilations. DOP Feedback reduces parallelism on queries where high DOP is not improving throughput and is consuming excessive worker threads.</p>
+
+<p class="text-gray-300 leading-relaxed">These are not just optimizer hints applied statically. They are stored as query feedback in the Query Store, persisted across connections and server restarts, and used to influence plan compilation for future executions. Understanding this persistence model matters when you are troubleshooting a plan regression that mysteriously appeared without a schema or statistics change.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server / Azure SQL: Inspect Memory Grant Feedback records stored in Query Store
+SELECT 
+    qsq.query_id,
+    qsq.query_hash,
+    qsqt.query_sql_text,
+    qsrs.execution_type_desc,
+    qsrs.avg_query_max_used_memory * 8 AS avg_used_memory_kb,
+    qsrs.avg_granted_memory * 8 AS avg_granted_memory_kb,
+    qsfb.feature_desc AS feedback_feature,
+    qsfb.feedback_data
+FROM sys.query_store_query qsq
+JOIN sys.query_store_query_text qsqt ON qsq.query_text_id = qsqt.query_text_id
+JOIN sys.query_store_plan qsp ON qsq.query_id = qsp.query_id
+JOIN sys.query_store_runtime_stats qsrs ON qsp.plan_id = qsrs.plan_id
+JOIN sys.query_store_plan_feedback qsfb ON qsp.plan_id = qsfb.plan_id
+WHERE qsfb.feature_desc IN ('MemoryGrantFeedback', 'DegreeOfParallelismFeedback', 'CardinalityEstimationFeedback')
+ORDER BY qsrs.avg_query_max_used_memory DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Automatic Tuning sits on top of this feedback loop. The Automatic Plan Correction feature watches for plan regressions — situations where a previously-used plan is now performing significantly worse than an earlier plan for the same query — and can automatically force the previous plan. The detection logic uses a regression threshold: if the average duration or CPU of the new plan exceeds the previous plan by a defined multiplier over a sufficient observation window, a recommendation is generated and, if auto-apply is enabled, the force is applied.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- SQL Server / Azure SQL: Review automatic tuning recommendations and their outcomes
+SELECT 
+    name AS recommendation_name,
+    type_desc,
+    reason,
+    state_transition_reason,
+    details,
+    execute_action_initiated_by,
+    execute_action_start_time,
+    execute_action_duration,
+    revert_action_initiated_by,
+    score
+FROM sys.dm_db_tuning_recommendations
+ORDER BY score DESC;
+
+-- Check current automatic tuning configuration
+SELECT 
+    name,
+    desired_state_desc,
+    actual_state_desc,
+    reason_desc
+FROM sys.database_automatic_tuning_options;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Where this becomes a production operational concern is in the interplay between IQP feedback and Automatic Plan Correction. If feedback is adjusting CE assumptions and that drives a plan change, Automatic Plan Correction may interpret the new plan as a regression and revert it. You can end up in an oscillation cycle. Monitoring <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_db_tuning_recommendations</code> with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">state_transition_reason = 'AutomaticTuningOptionDisabled'</code> or repeated revert entries for the same query is the signal to intervene manually — either by fixing the underlying statistics problem or by pinning a specific plan in Query Store using <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sp_query_store_force_plan</code>.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Azure Defender, Intelligent Threat Detection, and Anomaly-Based Alerting</h3>
+
+<p class="text-gray-300 leading-relaxed">Azure SQL's threat detection layer uses behavioral baselines built from your database's historical access patterns to identify anomalous SQL activity. This is not signature-based detection scanning for known bad strings. It is a statistical model trained on your specific workload — which queries are executed, from which IP addresses, at what times, by which logins, and with what parameters. Deviations from this baseline trigger alerts.</p>
+
+<p class="text-gray-300 leading-relaxed">Microsoft Advanced Threat Protection in Azure SQL covers several detection categories: SQL injection attacks, access from unusual locations, access from unusual principals, access from potentially harmful applications, brute force SQL credentials, and anomalous data exfiltration. The anomalous exfiltration category is particularly interesting from an AI standpoint — it flags queries that return unusually large result sets relative to the baseline for that query pattern or application login, which is a credible signal for insider threats or compromised application credentials.</p>
+
+<p class="text-gray-300 leading-relaxed">For DBAs, the practical integration point is ensuring these alerts route to where your team actually responds. Azure Defender alerts surface in Microsoft Defender for Cloud and can be forwarded to a Log Analytics workspace. From there, you can build automated responses using Azure Logic Apps or Function Apps.</p>
+
+<p class="text-gray-300 leading-relaxed">A common production pattern is to route high-severity Defender alerts to an Azure Function that:</p>
+<p class="text-gray-300 leading-relaxed">1. Queries the audit log to extract the full session context</p>
+<p class="text-gray-300 leading-relaxed">2. Calls an AI API (OpenAI or Claude) to classify the query and generate a human-readable incident summary</p>
+<p class="text-gray-300 leading-relaxed">3. Posts the enriched alert to a PagerDuty or Slack channel with the AI-generated context</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import json
+import logging
+import os
+import requests
+import azure.functions as func
+from anthropic import Anthropic
+
+anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+def main(event: func.EventGridEvent):
+    alert_data = event.get_json()
+    
+    # Extract relevant fields from the Defender alert
+    alert_type = alert_data.get("AlertType", "Unknown")
+    suspicious_query = alert_data.get("ExtendedProperties", {}).get("Suspicious query", "")
+    client_ip = alert_data.get("ExtendedProperties", {}).get("Client IP address", "")
+    affected_login = alert_data.get("ExtendedProperties", {}).get("Affected login", "")
+    database_name = alert_data.get("ExtendedProperties", {}).get("Database", "")
+    
+    prompt = f"""You are a database security analyst. Analyze this Azure SQL security alert 
+and provide a concise incident summary for the on-call DBA team.
+
+Alert Type: {alert_type}
+Suspicious Query: {suspicious_query}
+Client IP: {client_ip}
+Affected Login: {affected_login}
+Database: {database_name}
+
+Provide:
+1. A plain-English explanation of what the alert means
+2. The likely attack vector or user behavior it represents
+3. Immediate remediation steps the DBA should consider
+4. Whether this looks like a false positive and why
+
+Be specific and actionable. Do not use generic security advice."""
+
+    response = anthropic_client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=600,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    ai_summary = response.content[0].text
+    
+    # Post to Slack with enriched context
+    slack_payload = {
+        "text": f"🚨 *Azure SQL Security Alert: {alert_type}*",
+        "attachments": [{
+            "color": "danger",
+            "fields": [
+                {"title": "Database", "value": database_name, "short": True},
+                {"title": "Login", "value": affected_login, "short": True},
+                {"title": "Client IP", "value": client_ip, "short": True},
+                {"title": "AI Analysis", "value": ai_summary, "short": False}
+            ]
+        }]
+    }
+    
+    requests.post(os.environ["SLACK_WEBHOOK_URL"], json=slack_payload)
+    logging.info(f"Processed Defender alert: {alert_type}")</code></pre>
+
+<p class="text-gray-300 leading-relaxed">One important operational note: Defender for SQL's behavioral model requires a calibration period after first deployment. Microsoft recommends 14 to 30 days before alerts are reliable. If you enable it on a database that immediately begins receiving a new workload — after a migration or a major application change — expect elevated false positives until the model reestablishes its baseline. You can reset the baseline explicitly from the Azure portal or by disabling and re-enabling Defender on that specific database.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Azure OpenAI Integration and the Copilot Surface in Azure SQL</h3>
+
+<p class="text-gray-300 leading-relaxed">Microsoft has embedded Copilot assistance into several Azure SQL touchpoints: the Azure Query Editor in the portal, Azure Data Studio via the GitHub Copilot extension, and programmatically through Azure OpenAI Service with your own prompting layer. Understanding which surface fits which use case matters for how you design your team's AI-assisted workflow.</p>
+
+<p class="text-gray-300 leading-relaxed">The Azure Query Editor's natural language to SQL feature allows DBAs and developers to describe a query in plain English and receive a T-SQL draft. It is backed by an Azure OpenAI model with schema context automatically injected from the connected database's Information Schema. For ad-hoc exploration this is genuinely useful, but it has limitations in production contexts: it does not have access to Query Store, execution plan history, or column statistics, so its generated queries may be syntactically correct but perform poorly on large tables with skewed data.</p>
+
+<p class="text-gray-300 leading-relaxed">The more powerful integration for experienced DBAs is building a custom prompt layer against Azure OpenAI Service that injects rich context: current statistics, missing index DMVs, Query Store top queries, and table row counts. This is the pattern that actually produces production-grade query suggestions.</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>from openai import AzureOpenAI
+import pyodbc
+import json
+
+azure_client = AzureOpenAI(
+    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+    api_key=os.environ["AZURE_OPENAI_KEY"],
+    api_version="2024-02-01"
+)
+
+def get_query_context(conn_string: str, query_id: int) -&gt; dict:
+    """Pull rich context from Query Store and DMVs for a specific slow query."""
+    conn = pyodbc.connect(conn_string)
+    cursor = conn.cursor()
+    
+    # Get the slow query text and stats
+    cursor.execute("""
+        SELECT TOP 1
+            qsqt.query_sql_text,
+            qsrs.avg_duration / 1000.0 AS avg_duration_ms,
+            qsrs.avg_logical_io_reads,
+            qsrs.count_executions,
+            qsp.query_plan
+        FROM sys.query_store_query qsq
+        JOIN sys.query_store_query_text qsqt ON qsq.query_text_id = qsqt.query_text_id
+        JOIN sys.query_store_plan qsp ON qsq.query_id = qsp.query_id
+        JOIN sys.query_store_runtime_stats qsrs ON qsp.plan_id = qsrs.plan_id
+        WHERE qsq.query_id = ?
+        ORDER BY qsrs.avg_duration DESC
+    """, query_id)
+    query_row = cursor.fetchone()
+    
+    # Get missing index recommendations for tables in this query
+    cursor.execute("""
+        SELECT TOP 5
+            OBJECT_NAME(mid.object_id) AS table_name,
+            mid.equality_columns,
+            mid.inequality_columns,
+            mid.included_columns,
+            migs.avg_total_user_cost * migs.avg_user_impact * (migs.user_seeks + migs.user_scans) AS improvement_score
+        FROM sys.dm_db_missing_index_details mid
+        JOIN sys.dm_db_missing_index_groups mig ON mid.index_handle = mig.index_handle
+        JOIN sys.dm_db_missing_index_group_stats migs ON mig.index_group_handle = migs.group_handle
+        ORDER BY improvement_score DESC
+    """)
+    missing_indexes = cursor.fetchall()
+    
+    conn.close()
+    
+    return {
+        "query_text": query_row[0] if query_row else "",
+        "avg_duration_ms": float(query_row[1]) if query_row else 0,
+        "avg_logical_reads": int(query_row[2]) if query_row else 0,
+        "execution_count": int(query_row[3]) if query_row else 0,
+        "missing_indexes": [
+            {
+                "table": row[0],
+                "equality_cols": row[1],
+                "inequality_cols": row[2],
+                "include_cols": row[3],
+                "score": float(row[4])
+            }
+            for row in missing_indexes
+        ]
+    }
+
+def get_ai_tuning_recommendation(context: dict) -&gt; str:
+    system_prompt = """You are an expert Azure SQL DBA specializing in query performance tuning.
+You receive query execution context from Query Store and DMVs.
+You provide specific, implementable recommendations.
+Always consider index fragmentation, statistics staleness, and parameter sniffing.
+Format index creation statements as production-ready T-SQL with IF NOT EXISTS checks."""
+
+    user_prompt = f"""Analyze this Azure SQL query performance issue and provide tuning recommendations.
+
+Query Text:
+{context['query_text']}
+
+Performance Metrics:
+- Average Duration: {context['avg_duration_ms']:.2f} ms
+- Average Logical Reads: {context['avg_logical_reads']:,}
+- Execution Count: {context['execution_count']:,}
+
+Missing Index Suggestions from sys.dm_db_missing_index_details:
+{json.dumps(context['missing_indexes'], indent=2)}
+
+Provide:
+1. Root cause analysis
+2. Specific index recommendations with CREATE INDEX statements
+3. Query rewrite suggestions if applicable  
+4. Any statistics update recommendations
+5. Whether OPTION (RECOMPILE) or Query Store plan forcing should be considered"""
+
+    response = azure_client.chat.completions.create(
+        model="gpt-4o",  # Azure OpenAI deployment name
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        max_tokens=1500,
+        temperature=0.1
+    )
+    
+    return response.choices[0].message.content</code></pre>
+
+<p class="text-gray-300 leading-relaxed">For PostgreSQL on Azure Database for PostgreSQL Flexible Server, Microsoft has added a similar Copilot experience through the Azure portal's query execution surface, but the API integration pattern differs. The <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_azure_storage</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">azure_ai</code> extensions for Azure Database for PostgreSQL provide direct integration with Azure OpenAI and Azure Cognitive Services from within SQL itself — meaning you can invoke LLM completions and embeddings directly from T-SQL-style function calls in your PostgreSQL queries.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL (Azure Database for PostgreSQL Flexible Server):</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Enable the azure_ai extension (requires Azure Database for PostgreSQL Flexible Server)
+CREATE EXTENSION IF NOT EXISTS azure_ai;
+
+-- Configure the endpoint and API key
+SELECT azure_ai.set_setting('azure_openai.endpoint', 'https://your-resource.openai.azure.com/');
+SELECT azure_ai.set_setting('azure_openai.subscription_key', 'your-api-key');
+
+-- Generate embeddings for text stored in a table using Azure OpenAI from SQL
+SELECT 
+    id,
+    product_description,
+    azure_openai.create_embeddings(
+        'text-embedding-3-small',
+        product_description
+    )::vector AS embedding
+FROM product_catalog
+WHERE embedding IS NULL
+LIMIT 100;
+
+-- Perform semantic search using the generated embeddings
+SELECT 
+    product_description,
+    1 - (embedding &lt;=&gt; azure_openai.create_embeddings(
+        'text-embedding-3-small',
+        'lightweight waterproof hiking boots'
+    )::vector) AS cosine_similarity
+FROM product_catalog
+ORDER BY cosine_similarity DESC
+LIMIT 10;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">This in-database embedding generation pattern eliminates the round-trip to an application tier for semantic search workloads — which matters when you are processing millions of rows for batch classification or building real-time recommendation features.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Vector Search in Azure SQL and Azure Database for PostgreSQL</h3>
+
+<p class="text-gray-300 leading-relaxed">Vector similarity search has moved from a research curiosity to a production requirement for AI-native applications. Azure SQL Database now supports native vector storage and similarity search, and Azure Database for PostgreSQL has supported the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pgvector</code> extension for several years. The DBA's role in these deployments is not just provisioning the extension — it is designing indexes, managing storage growth, and understanding the query performance characteristics of approximate nearest neighbor (ANN) search at scale.</p>
+
+<p class="text-gray-300 leading-relaxed">In Azure SQL Database, Microsoft introduced the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VECTOR</code> data type and the <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">VECTOR_DISTANCE()</code> function. This is a native type, not a JSON or VARBINARY workaround. Azure SQL uses Disk-ANN (Disk-based Approximate Nearest Neighbor) for its vector index implementation, which is designed to handle billion-scale vector datasets that do not fit in memory by organizing the graph structure to minimize disk I/O during traversal.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server / Azure SQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Create a table with native vector storage in Azure SQL Database
+CREATE TABLE document_embeddings (
+    document_id     INT IDENTITY(1,1) PRIMARY KEY,
+    document_text   NVARCHAR(MAX),
+    source_url      NVARCHAR(1000),
+    created_at      DATETIME2 DEFAULT SYSUTCDATETIME(),
+    embedding       VECTOR(1536)  -- Dimension matches text-embedding-3-small
+);
+
+-- Create a vector index (DiskANN) for approximate nearest neighbor search
+CREATE VECTOR INDEX idx_doc_embeddings_ann
+ON document_embeddings (embedding)
+WITH (metric = 'cosine');
+
+-- Semantic search query using VECTOR_DISTANCE
+DECLARE @query_embedding VECTOR(1536) = (
+    SELECT embedding 
+    FROM query_embeddings_staging 
+    WHERE query_id = 42
+);
+
+SELECT TOP 10
+    document_id,
+    document_text,
+    source_url,
+    VECTOR_DISTANCE('cosine', embedding, @query_embedding) AS distance
+FROM document_embeddings
+ORDER BY distance ASC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL (Azure Database for PostgreSQL):</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Install pgvector extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Create equivalent table structure
+CREATE TABLE document_embeddings (
+    document_id     SERIAL PRIMARY KEY,
+    document_text   TEXT,
+    source_url      VARCHAR(1000),
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    embedding       VECTOR(1536)
+);
+
+-- Create HNSW index for approximate nearest neighbor search
+-- HNSW provides better query performance than IVFFlat for most production workloads
+CREATE INDEX idx_doc_embeddings_hnsw
+ON document_embeddings
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
+-- Set ef_search at query time to balance recall vs. performance
+SET hnsw.ef_search = 100;
+
+-- Semantic search query
+SELECT 
+    document_id,
+    document_text,
+    source_url,
+    1 - (embedding &lt;=&gt; $1::vector) AS cosine_similarity
+FROM document_embeddings
+ORDER BY embedding &lt;=&gt; $1::vector
+LIMIT 10;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The production sizing challenge with vector indexes is significant. A table storing 1 million 1536-dimensional float32 vectors consumes approximately 6 GB in raw storage before indexing. An HNSW index with <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">m=16</code> adds roughly 30 to 50 percent on top of that. When your embedding table reaches 10 to 50 million rows — common for document repositories or product catalogs — index build time, memory pressure during index construction, and autovacuum behavior all become concerns.</p>
+
+<p class="text-gray-300 leading-relaxed">For Azure Database for PostgreSQL, the key operational parameters for pgvector HNSW indexes in production are:</p>
+
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `m`: the number of bidirectional links per node. Higher values improve recall but increase index size and build time. Values of 16 to 32 are standard production choices.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `ef_construction`: controls graph quality during build. Higher values improve recall at the cost of index build time. 64 to 128 is typical.</li>
+<li class="flex gap-2 text-gray-300"><span class="text-blue-400">→</span> `hnsw.ef_search`: controls the search beam width at query time. This is a session or GUC-level setting, not stored with the index, so it must be set per connection or in `postgresql.conf`. For high-recall production use cases, 100 to 200 is typical.</li>
+
+<p class="text-gray-300 leading-relaxed">Autovacuum configuration for vector tables needs specific attention. Because embedding tables frequently receive bulk inserts (batch embedding jobs) rather than OLTP-style single-row writes, the default autovacuum cost delay and scale factor settings can allow dead tuple accumulation that degrades index quality and bloats the HNSW graph. Setting <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">autovacuum_vacuum_scale_factor = 0.01</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">autovacuum_analyze_scale_factor = 0.005</code> at the table level (via <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">ALTER TABLE ... SET (...)</code>) is a reasonable starting point for large embedding tables.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Azure AI Services Integration: Text Analytics, Cognitive Search, and the Intelligent Data Pipeline</h3>
+
+<p class="text-gray-300 leading-relaxed">Azure SQL doesn't operate in isolation. In most AI-native architectures, it sits alongside Azure Cognitive Search (which has its own vector index layer), Azure AI Language services, and Azure Machine Learning. The DBA's role in these integrated architectures is designing the data pipelines that move data between these systems efficiently — and ensuring that the SQL layer remains the source of truth while derived AI artifacts (embeddings, classifications, sentiment scores) are stored and queried without destroying relational performance.</p>
+
+<p class="text-gray-300 leading-relaxed">A common production pattern is the "AI enrichment pipeline" where Azure AI Language services process text columns from SQL tables and write classifications, key phrases, or sentiment scores back as structured columns. This creates an interesting schema design question: do you store AI output inline in the source table, in a separate enrichment table, or as computed columns refreshed by an Azure Function trigger?</p>
+
+<p class="text-gray-300 leading-relaxed">The inline approach is operationally simplest but creates problems when the AI model is retrained or swapped — you face a full table scan to re-enrich. The separate enrichment table approach is more maintainable: the source table is append-only, the enrichment table has a foreign key back to the source, and re-enrichment is a targeted batch operation against the enrichment table without touching the source.</p>
+
+    </div>
+    <div class="mt-14 bg-violet-950/40 border border-violet-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The AI-Powered DBA</div>
+  </footer>
+</body>
+</html>
