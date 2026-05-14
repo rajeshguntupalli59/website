@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chapter 2: Understanding AIOps for Databases — The AI-Powered DBA</title>
+  <meta name="description" content="The AI-Powered DBA Chapter 2: Understanding AIOps for Databases. AI and AIOps for PostgreSQL and SQL Server, by Rajesh Guntupalli." />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans antialiased">
+  <nav class="fixed top-0 left-0 right-0 z-50 border-b border-gray-800/60 bg-gray-950/90 backdrop-blur-md">
+    <div class="max-w-5xl mx-auto px-6 h-14 flex items-center justify-between">
+      <a href="../index.html" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <span class="text-sm font-bold text-white group-hover:text-violet-300 transition">Rajesh Guntupalli</span>
+      </a>
+      <div class="flex items-center gap-1 text-xs">
+        <a href="../index.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Home</a>
+        <a href="../products.html"   class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Products</a>
+        <a href="../book.html"       class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Books</a>
+        <a href="index.html"         class="px-3 py-1.5 text-white bg-gray-800 rounded-md">Book 2 Chapters</a>
+        <a href="../blog/index.html" class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">Blog</a>
+        <a href="../about.html"      class="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800/60 rounded-md transition">About</a>
+        <a href="../products.html"
+           class="ml-2 px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-lg transition">Get the Tools →</a>
+      </div>
+    </div>
+  </nav>
+  <article class="pt-28 pb-24 px-6 max-w-3xl mx-auto">
+    <div class="mb-6">
+      <a href="index.html" class="text-xs text-violet-400 hover:text-violet-300 transition">← All Chapters</a>
+    </div>
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-2.5 py-1 bg-violet-900/40 border border-violet-800/40 text-violet-300 text-xs rounded-full font-medium">Chapter 2 of 20</span>
+    </div>
+    <div class="space-y-4 text-sm">
+<h2 class="text-xl font-bold text-white mt-10 mb-4">Chapter 2: Understanding AIOps for Databases</h2>
+
+<p class="text-gray-300 leading-relaxed">The term AIOps entered the infrastructure world as a Gartner coinage, but for database professionals it carries specific and demanding meaning. It is not a dashboard that shows red and green indicators, nor is it a chatbot that paraphrases your documentation. AIOps for databases is the systematic application of machine learning, anomaly detection, predictive modeling, and large language models to the full operational lifecycle of a database system — from schema changes and query planning through incident response and capacity planning. This chapter builds the conceptual and technical foundation you need before wiring AI into a real PostgreSQL or SQL Server environment. It covers how AIOps pipelines are structured, what kinds of signals databases produce that ML models can consume, which tools occupy the modern AIOps stack, and how to avoid the architectural mistakes that cause AI-driven operations platforms to collapse under production load.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">From Reactive DBAs to Predictive Systems</h3>
+
+<p class="text-gray-300 leading-relaxed">Traditional database operations follow a well-worn pattern: something degrades, an alert fires, a DBA investigates, a fix is applied. The entire loop is reactive. The DBA is the intelligence layer, and that intelligence is expensive, context-dependent, and unavailable at 3 a.m. without an on-call rotation. Even the most rigorous monitoring setups — thresholds on CPU, I/O wait, lock contention, replication lag — still require a human to correlate signals and decide on action.</p>
+
+<p class="text-gray-300 leading-relaxed">AIOps does not replace that human judgment. What it does is compress the time between signal and insight, surface correlations that span dozens of metrics simultaneously, and generate candidate actions the DBA can evaluate rather than derive from scratch. The shift is from a DBA who must discover problems to one who validates and approves solutions that the system has already reasoned toward.</p>
+
+<p class="text-gray-300 leading-relaxed">Consider what a DBA actually does during a performance incident. They query <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pg_stat_activity</code> or <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">sys.dm_exec_requests</code> to see what is running. They look at wait statistics. They pull recent query plans. They correlate execution counts with time-of-day patterns. They check whether a recent deployment changed query shapes. They form a hypothesis. That entire process is a sequence of data retrieval and pattern recognition — exactly the operations ML pipelines are designed to automate.</p>
+
+<p class="text-gray-300 leading-relaxed">The distinction between AIOps and traditional monitoring is not the presence of charts or alerts. It is whether the system can learn from historical behavior, detect deviation without a manually configured threshold, and communicate findings in terms a DBA can act on immediately. A threshold-based alert that fires when CPU exceeds 80% is not AIOps. A model that has learned your normal CPU envelope across weekdays, weekends, end-of-month batch jobs, and maintenance windows — and that alerts only when behavior falls outside that learned baseline — is.</p>
+
+<p class="text-gray-300 leading-relaxed">This shift requires databases to become first-class signal producers. PostgreSQL and SQL Server both expose rich internal telemetry, but most of it is ephemeral. The first architectural requirement of any AIOps system is a telemetry pipeline that captures this data continuously and makes it available for model training and inference.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">PostgreSQL:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Capture a point-in-time snapshot of wait events for AIOps telemetry
+SELECT
+    pid,
+    usename,
+    application_name,
+    state,
+    wait_event_type,
+    wait_event,
+    query_start,
+    EXTRACT(EPOCH FROM (now() - query_start)) AS duration_seconds,
+    left(query, 200) AS query_snippet
+FROM pg_stat_activity
+WHERE state != 'idle'
+  AND query_start IS NOT NULL
+ORDER BY duration_seconds DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">SQL Server:</strong></p>
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>-- Capture active requests with wait statistics for AIOps telemetry
+SELECT
+    r.session_id,
+    r.status,
+    r.wait_type,
+    r.wait_time / 1000.0 AS wait_seconds,
+    r.cpu_time / 1000.0 AS cpu_seconds,
+    r.total_elapsed_time / 1000.0 AS elapsed_seconds,
+    r.logical_reads,
+    r.writes,
+    DB_NAME(r.database_id) AS database_name,
+    LEFT(t.text, 200) AS query_snippet
+FROM sys.dm_exec_requests r
+CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
+WHERE r.session_id &gt; 50  -- exclude system processes
+ORDER BY r.total_elapsed_time DESC;</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Both queries, executed on a scheduled basis and written to a time-series store, become training data. The shape of that data over time — which waits cluster together, which query patterns precede degradation, how duration distributions shift — is what ML models learn from.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">The AIOps Signal Taxonomy for Databases</h3>
+
+<p class="text-gray-300 leading-relaxed">Before any model can be trained or any AI API called meaningfully, you need a clear-eyed inventory of what your database actually produces. Database telemetry falls into four categories, and AIOps systems consume all four in different ways.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Metrics</strong> are numeric, time-series measurements: queries per second, cache hit ratio, index scan rates, transaction throughput, vacuum activity in PostgreSQL, autogrowth events in SQL Server. These are the natural inputs for anomaly detection models and forecasting algorithms. They are high-frequency, low-dimensionality, and well-suited to streaming ingestion via Prometheus exporters or custom collectors feeding into InfluxDB or TimescaleDB.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Logs</strong> are structured or semi-structured event records: slow query logs, error logs, autovacuum logs, deadlock traces, replication conflict events. These are higher-dimensionality, irregular in timing, and valuable for pattern classification — particularly for training models that recognize the signature of an impending failure mode. Log parsing and embedding are where LLMs begin to earn their place in the stack.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Traces</strong> are causal chains of operations: a single query execution traced through parse, plan, execute, and fetch phases, with timing at each stage. PostgreSQL's <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">auto_explain</code> extension and SQL Server's Extended Events provide this data. Traces are expensive to capture comprehensively but are the most information-dense signal for query-level AIOps.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Events</strong> are discrete, semantically meaningful occurrences: a schema change, a statistics update, an index rebuild, a failover, a connection pool exhaustion. Events are sparse but causally important — they are often the root cause that metrics and logs reflect as downstream symptoms. Correlating an anomaly in metrics with a preceding event is a core capability of mature AIOps systems.</p>
+
+<p class="text-gray-300 leading-relaxed">A production AIOps pipeline must ingest all four categories. Teams that build on metrics alone will build anomaly detection systems that flag degradation but cannot explain it. Teams that add log analysis gain explanatory power. Teams that correlate events gain root cause attribution. The architecture that supports this is not complex, but it must be designed intentionally.</p>
+
+<p class="text-gray-300 leading-relaxed">The standard open-source stack for this ingestion layer is: <strong class="text-white">PostgreSQL exporter</strong> or <strong class="text-white">custom T-SQL collectors</strong> → <strong class="text-white">Prometheus</strong> (for metrics) + <strong class="text-white">Loki</strong> or <strong class="text-white">Elasticsearch</strong> (for logs) → <strong class="text-white">Grafana</strong> (for visualization and alerting). For ML training pipelines, the data flows from these stores into Python-based feature engineering and model training jobs. For LLM-based analysis, relevant subsets of this telemetry get formatted into prompts sent to Claude or OpenAI APIs.</p>
+
+<p class="text-gray-300 leading-relaxed">A practical Python collector that pulls PostgreSQL wait events and writes them to a time-series database as training material looks like this:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import psycopg2
+import time
+import json
+from datetime import datetime
+from prometheus_client import Gauge, start_http_server
+
+# Prometheus gauges for wait event tracking
+WAIT_EVENT_GAUGE = Gauge(
+    'pg_wait_event_count',
+    'Count of active sessions by wait event',
+    ['wait_event_type', 'wait_event', 'database']
+)
+
+def collect_wait_events(conn_string: str) -&gt; None:
+    """Collect PostgreSQL wait events and expose as Prometheus metrics."""
+    query = """
+        SELECT
+            COALESCE(wait_event_type, 'CPU') AS wait_event_type,
+            COALESCE(wait_event, 'active') AS wait_event,
+            current_database() AS database,
+            COUNT(*) AS session_count
+        FROM pg_stat_activity
+        WHERE state = 'active'
+          AND pid != pg_backend_pid()
+        GROUP BY wait_event_type, wait_event
+    """
+    try:
+        with psycopg2.connect(conn_string) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query)
+                rows = cur.fetchall()
+                for wait_type, wait_event, db, count in rows:
+                    WAIT_EVENT_GAUGE.labels(
+                        wait_event_type=wait_type,
+                        wait_event=wait_event,
+                        database=db
+                    ).set(count)
+    except Exception as e:
+        print(f"Collection error at {datetime.utcnow()}: {e}")
+
+if __name__ == "__main__":
+    import os
+    start_http_server(9188)  # Expose metrics for Prometheus scraping
+    conn_str = os.environ["PG_CONN_STRING"]
+    while True:
+        collect_wait_events(conn_str)
+        time.sleep(15)</code></pre>
+
+<p class="text-gray-300 leading-relaxed">This collector, deployed alongside the database, feeds Prometheus every 15 seconds. Over days and weeks it builds the historical baseline that anomaly detection models require. The same pattern applies to SQL Server using <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pyodbc</code> against DMVs.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">Anomaly Detection Architectures for Database Metrics</h3>
+
+<p class="text-gray-300 leading-relaxed">Anomaly detection is the most immediately deployable form of AIOps for databases because it does not require a human to know what thresholds matter. The model learns the normal distribution of behavior and flags deviations. But choosing the wrong detection approach for your signal type is one of the most common failure modes in database AIOps projects.</p>
+
+<p class="text-gray-300 leading-relaxed">Database metrics are not stationary. Query throughput peaks at business hours and valleys overnight. Batch jobs create predictable spikes every Monday morning. End-of-quarter financial closes push I/O patterns that look catastrophic to a naive model but are entirely expected. Any anomaly detection system that does not account for seasonality will generate alert fatigue that destroys team confidence in the system within weeks.</p>
+
+<p class="text-gray-300 leading-relaxed">The approaches that work in production fall into three categories:</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Statistical baselines with seasonality decomposition</strong>: Time-series decomposition separates a metric into trend, seasonal, and residual components. Facebook's Prophet library (now maintained by the community) was designed for exactly this use case and handles daily and weekly seasonality well. The residual component is what you run anomaly detection against. This approach is interpretable and debuggable, which matters when a DBA needs to explain to management why an alert fired.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">Unsupervised machine learning</strong>: Isolation Forest and DBSCAN are well-suited to high-dimensional database metric data where you are not looking at a single gauge but at clusters of related metrics simultaneously — CPU, I/O wait, active connections, and lock wait counts together. These models learn what normal multi-dimensional operating points look like and identify when the current point falls outside the learned manifold. scikit-learn provides production-ready implementations.</p>
+
+<p class="text-gray-300 leading-relaxed"><strong class="text-white">LSTM and time-series neural networks</strong>: For databases with stable, long-running workloads where you have months of training data, sequence models like LSTM autoencoders learn temporal dependencies that simpler statistical models miss. They are more expensive to train and less interpretable, but they catch the subtle leading indicators — a gradual drift in plan cache hit rates, a slow creep in average sort spill counts — that precede major incidents by hours.</p>
+
+<p class="text-gray-300 leading-relaxed">Here is a practical Isolation Forest implementation applied to SQL Server DMV data, using <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">pyodbc</code> to collect features and scikit-learn to score them:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import pyodbc
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
+import joblib
+import os
+
+def collect_sqlserver_features(conn_string: str) -&gt; pd.DataFrame:
+    """
+    Collect multi-dimensional performance features from SQL Server DMVs.
+    Returns a DataFrame row suitable for anomaly scoring.
+    """
+    query = """
+    SELECT
+        (SELECT COUNT(*) FROM sys.dm_exec_requests 
+         WHERE status = 'running') AS active_requests,
+        (SELECT COUNT(*) FROM sys.dm_exec_requests 
+         WHERE wait_time &gt; 5000) AS long_waits,
+        (SELECT SUM(signal_wait_time_ms) 
+         FROM sys.dm_os_wait_stats 
+         WHERE wait_type NOT IN ('SLEEP_TASK','BROKER_TO_FLUSH','WAITFOR',
+                                  'REQUEST_FOR_DEADLOCK_SEARCH','SQLTRACE_BUFFER_FLUSH',
+                                  'CLR_AUTO_EVENT','DISPATCHER_QUEUE_SEMAPHORE',
+                                  'CHECKPOINT_QUEUE')) AS total_signal_wait_ms,
+        (SELECT SUM(waiting_tasks_count) 
+         FROM sys.dm_os_wait_stats 
+         WHERE wait_type LIKE 'PAGEIOLATCH%') AS pageio_waits,
+        (SELECT page_fault_count 
+         FROM sys.dm_os_process_memory) AS page_faults,
+        (SELECT SUM(total_worker_time) / NULLIF(SUM(execution_count), 0)
+         FROM sys.dm_exec_query_stats 
+         WHERE last_execution_time &gt; DATEADD(MINUTE, -5, GETDATE())) AS avg_worker_time_5min,
+        (SELECT COUNT(*) FROM sys.dm_exec_connections) AS total_connections,
+        DATEPART(HOUR, GETDATE()) AS hour_of_day,
+        DATEPART(WEEKDAY, GETDATE()) AS day_of_week
+    """
+    with pyodbc.connect(conn_string) as conn:
+        df = pd.read_sql(query, conn)
+    return df
+
+def train_isolation_forest(
+    historical_data: pd.DataFrame,
+    model_path: str = "iforest_sqlserver.pkl"
+) -&gt; IsolationForest:
+    """Train and persist an Isolation Forest on historical feature data."""
+    feature_cols = [c for c in historical_data.columns 
+                    if c not in ('hour_of_day', 'day_of_week')]
+    
+    # Include time features as cyclical encodings to capture seasonality
+    historical_data['hour_sin'] = np.sin(2 * np.pi * historical_data['hour_of_day'] / 24)
+    historical_data['hour_cos'] = np.cos(2 * np.pi * historical_data['hour_of_day'] / 24)
+    historical_data['day_sin'] = np.sin(2 * np.pi * historical_data['day_of_week'] / 7)
+    historical_data['day_cos'] = np.cos(2 * np.pi * historical_data['day_of_week'] / 7)
+    
+    all_features = feature_cols + ['hour_sin', 'hour_cos', 'day_sin', 'day_cos']
+    X = historical_data[all_features].fillna(0).values
+    
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
+    model = IsolationForest(
+        n_estimators=200,
+        contamination=0.02,  # assume ~2% of historical data are anomalies
+        random_state=42,
+        n_jobs=-1
+    )
+    model.fit(X_scaled)
+    
+    joblib.dump({'model': model, 'scaler': scaler, 'features': all_features}, model_path)
+    return model
+
+def score_current_state(
+    conn_string: str,
+    model_path: str = "iforest_sqlserver.pkl"
+) -&gt; dict:
+    """Score current database state and return anomaly assessment."""
+    artifact = joblib.load(model_path)
+    model, scaler, features = artifact['model'], artifact['scaler'], artifact['features']
+    
+    current = collect_sqlserver_features(conn_string)
+    current['hour_sin'] = np.sin(2 * np.pi * current['hour_of_day'] / 24)
+    current['hour_cos'] = np.cos(2 * np.pi * current['hour_of_day'] / 24)
+    current['day_sin'] = np.sin(2 * np.pi * current['day_of_week'] / 7)
+    current['day_cos'] = np.cos(2 * np.pi * current['day_of_week'] / 7)
+    
+    X = current[features].fillna(0).values
+    X_scaled = scaler.transform(X)
+    
+    score = model.decision_function(X_scaled)[0]  # negative = more anomalous
+    is_anomaly = model.predict(X_scaled)[0] == -1
+    
+    return {
+        'is_anomaly': is_anomaly,
+        'anomaly_score': float(score),
+        'features': current[features].to_dict(orient='records')[0]
+    }</code></pre>
+
+<p class="text-gray-300 leading-relaxed">The cyclical encoding of <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">hour_of_day</code> and <code class="bg-gray-800 px-1.5 py-0.5 rounded text-blue-300 text-xs">day_of_week</code> is a small but important detail. Treating hour as a raw integer (0–23) breaks the continuity between hour 23 and hour 0. Encoding it as sine and cosine on a circle preserves the temporal adjacency that makes the model seasonality-aware without requiring a full decomposition step.</p>
+
+<p class="text-gray-300 leading-relaxed">---</p>
+
+<h3 class="text-lg font-semibold text-white mt-8 mb-3">LLMs as the Reasoning Layer: From Signals to Explanations</h3>
+
+<p class="text-gray-300 leading-relaxed">Anomaly detection tells you that something is wrong. It does not tell you what is wrong or what to do about it. This is where large language models enter the AIOps architecture — not as a replacement for the detection layer, but as the reasoning layer that interprets signals and generates actionable context for the DBA.</p>
+
+<p class="text-gray-300 leading-relaxed">The pattern is consistent across use cases: collect the relevant telemetry, format it into a structured prompt, send it to a model (Claude, GPT-4, or a self-hosted alternative via AWS Bedrock or Azure AI), and return the response to the operator. The model's role is to perform the correlation and hypothesis generation that a senior DBA would perform if they were sitting at the terminal looking at the same data.</p>
+
+<p class="text-gray-300 leading-relaxed">This is not a magic oracle. The quality of the output is entirely a function of the quality of the input. A prompt that dumps raw metrics without context produces vague generalizations. A prompt that includes the anomaly score, the specific metrics that deviated, the time window, any recent events (schema changes, deployment records), and the database version produces diagnostically useful output.</p>
+
+<p class="text-gray-300 leading-relaxed">Here is a production-grade function that assembles a diagnostic prompt from PostgreSQL telemetry and calls the Anthropic Claude API:</p>
+
+<pre class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto my-5"><code>import anthropic
+import psycopg2
+import json
+from datetime import datetime, timedelta
+
+def build_pg_diagnostic_context(conn_string: str) -&gt; dict:
+    """
+    Assembles multi-source diagnostic context from a PostgreSQL instance
+    for use in an LLM diagnostic prompt.
+    """
+    context = {}
+    
+    with psycopg2.connect(conn_string) as conn:
+        with conn.cursor() as cur:
+            # Top wait events
+            cur.execute("""
+                SELECT wait_event_type, wait_event, COUNT(*) as sessions
+                FROM pg_stat_activity
+                WHERE state = 'active' AND pid != pg_backend_pid()
+                GROUP BY wait_event_type, wait_event
+                ORDER BY sessions DESC LIMIT 10
+            """)
+            context['wait_events'] = cur.fetchall()
+            
+            # Long-running queries
+            cur.execute("""
+                SELECT pid, usename, state, wait_event,
+                       EXTRACT(EPOCH FROM (now() - query_start))::int AS duration_sec,
+                       left(query, 300) AS query
+                FROM pg_stat_activity
+                WHERE state != 'idle'
+                  AND query_start &lt; now() - interval '30 seconds'
+                ORDER BY duration_sec DESC LIMIT 5
+            """)
+            context['long_queries'] = cur.fetchall()
+            
+            # Table bloat indicators
+            cur.execute("""
+                SELECT schemaname, relname, n_dead_tup, n_live_tup,
+                       ROUND(n_dead_tup::numeric / NULLIF(n_live_tup + n_dead_tup, 0) * 100, 2) 
+                           AS dead_pct,
+                       last_autovacuum, last_autoanalyze
+                FROM pg_stat_user_tables
+                WHERE n_dead_tup &gt; 10000
+                ORDER BY n_dead_tup DESC LIMIT 10
+            """)
+            context['bloat_candidates'] = cur.fetchall()
+            
+            # Database-level stats
+            cur.execute("""
+                SELECT datname, numbackends, xact_commit, xact_rollback,
+                       blks_hit, blks_read,
+                       ROUND(blks_hit::numeric / NULLIF(blks_hit + blks_read, 0) * 100, 2) 
+                           AS cache_hit_pct,
+                       conflicts, deadlocks, temp_bytes
+                FROM pg_stat_database
+                WHERE datname = current_database()
+            """)
+            context['db_stats'] = cur.fetchone()
+
+    return context
+
+
+def diagnose_with_claude(
+    anomaly_result: dict,
+    diagnostic_context: dict,
+    pg_version: str,
+    recent_events: list[str] | None = None
+) -&gt; str:
+    """
+    Sends structured PostgreSQL diagnostic context to Claude for analysis.
+    Returns the model's diagnostic assessment.
+    """
+    client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from environment
+    
+    prompt = f"""You are a senior PostgreSQL DBA performing a real-time incident analysis.
+
+## Anomaly Detection Result
+- Anomaly detected: {anomaly_result['is_anomaly']}
+- Anomaly score: {anomaly_result['anomaly_score']:.4f} (more negative = more anomalous)
+- PostgreSQL version: {pg_version}
+- Analysis timestamp: {datetime.utcnow().isoformat()}
+
+## Current Wait Events (active sessions)
+{json.dumps(diagnostic_context['wait_events'], indent=2, default=str)}
+
+## Long-Running Queries (&gt;30s)
+{json.dumps(diagnostic_context['long_queries'], indent=2, default=str)}
+
+## Table Bloat Indicators
+{json.dumps(diagnostic_context['bloat_candidates'], indent=2, default=str)}
+
+## Database-Level Statistics
+{json.dumps(diagnostic_context['db_stats'], indent=2, default=str)}
+
+## Recent Operational Events
+{json.dumps(recent_events or [], indent=2)}
+
+## Your Task
+1. Identify the most likely root cause based on the wait events and query patterns.
+2. Assess whether the bloat indicators are contributing to the anomaly.
+3. List specific PostgreSQL diagnostic queries the DBA should run next to confirm the hypothesis.
+4. Recommend immediate mitigations if the situation is urgent.
+5. Flag any patterns that suggest a systemic issue versus a transient spike.
+
+Be specific. Reference the actual metric values. Do not hedge with generic advice.
+"""
+
+    message = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=1500,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    return message.content[0].text</code></pre>
+
+<p class="text-gray-300 leading-relaxed">Two design choices in this implementation deserve explicit attention. First, the prompt includes hard numbers — actual metric values, actual query text, actual dead tuple counts. Generic prompts produce generic responses. Second, the instruction "Do not hedge with generic advice" is not just stylistic — LLMs default toward hedged, cautious language because it is safer for the model. For a DBA under incident pressure, that hedging is noise. You want the model to commit to a hypothesis the DBA can evaluate.</p>
+
+<p class="text-gray-300 leading-relaxed">The integration of AWS Bedrock follows the same pattern with a different client initialization, making it straightforward to swap providers depending on your cloud environment:</p>
+
+    </div>
+    <div class="mt-14 bg-violet-950/40 border border-violet-800/40 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-5">
+      <div class="flex-1">
+        <p class="font-semibold text-white mb-1">QueryOptimizer — Self-Hosted SQL Performance Workbench</p>
+        <p class="text-xs text-gray-400">EXPLAIN visualizer · Index advisor · Slow query dashboard · PostgreSQL + SQL Server</p>
+      </div>
+      <a href="https://queryoptimizer.lemonsqueezy.com/checkout/buy/50cb7c74-b67d-4058-ba70-4f108cc9f686"
+         class="shrink-0 px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl text-sm transition">
+        Buy Now — $149
+      </a>
+    </div>
+    <div class="mt-8 text-xs">
+      <a href="index.html" class="text-gray-500 hover:text-gray-300 transition">← All Chapters</a>
+    </div>
+  </article>
+  <footer class="border-t border-gray-800/50 px-6 py-8">
+    <div class="max-w-5xl mx-auto text-xs text-gray-600 text-center">© 2026 Rajesh Guntupalli · The AI-Powered DBA</div>
+  </footer>
+</body>
+</html>
